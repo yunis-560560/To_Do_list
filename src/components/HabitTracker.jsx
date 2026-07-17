@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Check, Plus, Settings2, MoreHorizontal, Trash2, Edit2, Smile, Flame } from 'lucide-react';
+import { Check, Plus, Settings2, MoreHorizontal, Trash2, Edit2, Smile, Flame, Loader2 } from 'lucide-react';
 import { format, getDaysInMonth, startOfMonth, addDays } from 'date-fns';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
 
@@ -71,7 +71,7 @@ const HabitRow = ({ habit, habitLogs, days, onToggle, onUpdate, onDelete }) => {
     <div className="flex w-max min-w-full border-b border-zinc-800/50 hover:bg-zinc-800/20 transition-colors group">
       
       {/* Sticky Left: Habit Info */}
-      <div className={`w-64 sticky left-0 ${isMenuOpen ? 'z-50' : 'z-20'} bg-zinc-900 border-r border-zinc-800 flex items-center p-3 gap-3`}>
+      <div className={`w-36 md:w-64 sticky left-0 ${isMenuOpen ? 'z-50' : 'z-20'} bg-zinc-900 border-r border-zinc-800 flex items-center p-2 md:p-3 gap-2 md:gap-3`}>
         <button 
           className="text-2xl hover:scale-110 transition-transform flex-shrink-0"
           title="Change Icon (Mock)"
@@ -155,8 +155,8 @@ const HabitRow = ({ habit, habitLogs, days, onToggle, onUpdate, onDelete }) => {
         })}
       </div>
 
-      {/* Sticky Right: Analysis */}
-      <div className="w-64 sticky right-0 z-20 bg-zinc-900 border-l border-zinc-800 flex items-center p-3 justify-between">
+      {/* Right Analysis - Non-sticky on mobile so it doesn't cover the screen */}
+      <div className="w-40 md:w-64 md:sticky right-0 z-20 bg-zinc-900 border-l border-zinc-800 flex items-center p-2 md:p-3 justify-between shrink-0">
         <div className="w-24 h-8 opacity-70">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={generateSparklineData(habit.id, habitLogs, days)}>
@@ -186,8 +186,32 @@ const HabitRow = ({ habit, habitLogs, days, onToggle, onUpdate, onDelete }) => {
   );
 };
 
-const HabitTracker = ({ habits, habitLogs, onToggle, onAdd, onUpdate, onDelete }) => {
+const HabitTracker = ({ habits, habitLogs, hasUnsavedChanges, isSyncing, onToggle, onAdd, onUpdate, onDelete, onSaveAll, onSaveToday }) => {
   const [newHabitName, setNewHabitName] = useState('');
+  const [toastMessage, setToastMessage] = useState(null);
+  
+  const showToast = (message, isError = false) => {
+    setToastMessage({ message, isError });
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleSaveAll = async () => {
+    try {
+      await onSaveAll();
+      showToast("Progress saved ✓");
+    } catch (e) {
+      showToast("Couldn't save, try again", true);
+    }
+  };
+
+  const handleSaveToday = async () => {
+    try {
+      await onSaveToday();
+      showToast("Today's progress updated ✓");
+    } catch (e) {
+      showToast("Couldn't save, try again", true);
+    }
+  };
   
   // Use actual current date
   const currentDate = new Date();
@@ -209,11 +233,12 @@ const HabitTracker = ({ habits, habitLogs, onToggle, onAdd, onUpdate, onDelete }
   };
 
   return (
-    <div className="bg-zinc-900 rounded-xl shadow-xl border border-zinc-800 overflow-x-auto relative custom-scrollbar">
-      {/* Header Row */}
+    <div className="bg-zinc-900 rounded-xl shadow-xl border border-zinc-800 relative">
+      <div className="overflow-x-auto custom-scrollbar">
+        {/* Header Row */}
       <div className="flex w-max min-w-full border-b border-zinc-800 bg-zinc-900/95 backdrop-blur z-30 sticky top-0">
-        <div className="w-64 sticky left-0 z-40 bg-zinc-900 p-4 border-r border-zinc-800 flex items-center justify-between">
-          <h2 className="text-sm font-bold text-zinc-100 uppercase tracking-wider">My Habits</h2>
+        <div className="w-36 md:w-64 sticky left-0 z-40 bg-zinc-900 p-2 md:p-4 border-r border-zinc-800 flex items-center justify-between">
+          <h2 className="text-xs md:text-sm font-bold text-zinc-100 uppercase tracking-wider">My Habits</h2>
           <button className="text-zinc-500 hover:text-orange-500 transition-colors">
             <Settings2 size={16} />
           </button>
@@ -228,8 +253,8 @@ const HabitTracker = ({ habits, habitLogs, onToggle, onAdd, onUpdate, onDelete }
           ))}
         </div>
         
-        <div className="w-64 sticky right-0 z-40 bg-zinc-900 p-4 border-l border-zinc-800 flex items-center">
-          <h2 className="text-sm font-bold text-zinc-400 uppercase tracking-wider">Analysis</h2>
+        <div className="w-40 md:w-64 md:sticky right-0 z-40 bg-zinc-900 p-2 md:p-4 border-l border-zinc-800 flex items-center shrink-0">
+          <h2 className="text-xs md:text-sm font-bold text-zinc-400 uppercase tracking-wider">Analysis</h2>
         </div>
       </div>
 
@@ -249,7 +274,7 @@ const HabitTracker = ({ habits, habitLogs, onToggle, onAdd, onUpdate, onDelete }
 
         {/* Add Habit Row */}
         <div className="flex w-max min-w-full">
-          <div className="w-64 sticky left-0 z-20 bg-zinc-900 border-r border-zinc-800 p-3">
+          <div className="w-36 md:w-64 sticky left-0 z-20 bg-zinc-900 border-r border-zinc-800 p-2 md:p-3">
             <form onSubmit={handleAddSubmit} className="flex items-center gap-2">
               <button 
                 type="button"
@@ -260,16 +285,50 @@ const HabitTracker = ({ habits, habitLogs, onToggle, onAdd, onUpdate, onDelete }
               <input 
                 type="text" 
                 placeholder="Add new habit..."
-                className="flex-1 min-w-0 bg-transparent border-none text-sm text-zinc-300 placeholder-zinc-600 outline-none"
+                className="flex-1 min-w-0 bg-transparent border-none text-sm text-white placeholder-white/70 outline-none"
                 value={newHabitName}
                 onChange={(e) => setNewHabitName(e.target.value)}
               />
             </form>
           </div>
           <div className="flex-1"></div>
-          <div className="w-64 sticky right-0 z-20 bg-zinc-900 border-l border-zinc-800"></div>
+          <div className="w-40 md:w-64 md:sticky right-0 z-20 bg-zinc-900 border-l border-zinc-800 shrink-0"></div>
         </div>
       </div>
+      </div>
+
+      {/* Action Buttons Row */}
+      <div className="flex justify-end items-center gap-4 p-4 border-t border-zinc-800 bg-zinc-900/95 rounded-b-xl">
+        {hasUnsavedChanges && (
+          <span className="text-orange-500 text-sm font-medium flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+            Unsaved changes
+          </span>
+        )}
+        <button 
+          onClick={handleSaveToday}
+          disabled={isSyncing}
+          className="px-4 py-2 text-sm text-zinc-300 border border-zinc-700 rounded-lg hover:bg-zinc-800 transition-colors disabled:opacity-50"
+        >
+          {isSyncing ? <Loader2 size={16} className="animate-spin inline mr-2" /> : null}
+          Update Today's Task
+        </button>
+        <button 
+          onClick={handleSaveAll}
+          disabled={isSyncing}
+          className="px-4 py-2 text-sm text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-colors flex items-center gap-2 disabled:opacity-50"
+        >
+          {isSyncing ? <Loader2 size={16} className="animate-spin" /> : null}
+          Save
+        </button>
+      </div>
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className={`fixed md:absolute bottom-4 right-4 md:bottom-20 md:right-4 p-3 rounded-lg shadow-xl text-sm font-bold z-50 flex items-center gap-2 transition-all animate-in slide-in-from-bottom-4 ${toastMessage.isError ? 'bg-red-500/90 text-white' : 'bg-emerald-500/90 text-white'}`}>
+          {toastMessage.message}
+        </div>
+      )}
     </div>
   );
 };

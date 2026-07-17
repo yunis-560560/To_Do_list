@@ -93,7 +93,7 @@ const BudgetDashboard = ({ budgetProfile, expenses, addExpense, updateExpense, d
   };
 
   return (
-    <div className="bg-zinc-900 rounded-xl shadow-xl border border-zinc-800 p-6 md:p-8 mt-6 flex flex-col gap-8">
+    <div className="bg-zinc-900 rounded-xl shadow-xl border border-zinc-800 p-4 sm:p-6 md:p-8 mt-4 sm:mt-6 flex flex-col gap-6 sm:gap-8">
       
       {/* HEADER & SUMMARY STATS */}
       <div>
@@ -101,7 +101,7 @@ const BudgetDashboard = ({ budgetProfile, expenses, addExpense, updateExpense, d
           <h2 className="text-2xl font-bold tracking-wider text-white">
             MY <span className="text-orange-500">BUDGET</span>
           </h2>
-          <div className="text-right">
+          <div className="text-left md:text-right">
             <p className="text-xs text-zinc-500 uppercase font-bold tracking-wider mb-1">Monthly Goal</p>
             <p className="text-2xl font-bold text-white">₹{goal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
           </div>

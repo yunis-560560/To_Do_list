@@ -23,9 +23,9 @@ const Navbar = ({ activeTab, onTabChange, user, onLogout }) => {
   ];
 
   return (
-    <nav className="bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl p-2 sticky top-4 z-50 flex items-center justify-between">
+    <nav className="bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl p-2 sticky top-2 sm:top-4 z-50 flex items-center justify-between gap-2">
       {/* Left side: Tabs */}
-      <div className="flex items-center gap-1 overflow-x-auto custom-scrollbar">
+      <div className="flex items-center gap-1 overflow-x-auto custom-scrollbar flex-1 min-w-0 pb-1 sm:pb-0">
         {tabs.map(tab => (
           <button
             key={tab.id}
@@ -43,7 +43,7 @@ const Navbar = ({ activeTab, onTabChange, user, onLogout }) => {
       </div>
 
       {/* Right side: Coins + Profile */}
-      <div className="flex items-center gap-4 px-2">
+      <div className="flex items-center gap-2 sm:gap-4 px-1 sm:px-2 flex-shrink-0">
         {/* Placeholder for Coins */}
         
         {/* Profile Dropdown */}

@@ -12,7 +12,7 @@ import { useUser } from './hooks/useUser';
 
 function App() {
   const { user, login, signup, updateProfile, logout, requestPasswordReset, validateResetToken, confirmPasswordReset } = useUser();
-  const { habits, habitLogs, addHabit, updateHabit, deleteHabit, toggleHabitLog } = useHabits(user?.email);
+  const { habits, habitLogs, hasUnsavedChanges, isSyncing, addHabit, updateHabit, deleteHabit, toggleHabitLog, saveAll, saveToday } = useHabits(user?.email);
   
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem('futuremind_active_tab') || 'dashboard';
@@ -46,10 +46,14 @@ function App() {
             <HabitTracker 
               habits={habits}
               habitLogs={habitLogs}
+              hasUnsavedChanges={hasUnsavedChanges}
+              isSyncing={isSyncing}
               onToggle={toggleHabitLog}
               onAdd={addHabit}
               onUpdate={updateHabit}
               onDelete={deleteHabit}
+              onSaveAll={saveAll}
+              onSaveToday={saveToday}
             />
           </>
         );
@@ -57,11 +61,11 @@ function App() {
         return <BudgetModule userEmail={user.email} />;
       case 'analysis':
         return (
-          <div className="flex gap-6">
-            <div className="flex-1">
+          <div className="flex flex-col lg:flex-row gap-6">
+            <div className="flex-1 w-full overflow-hidden">
               <WellnessChart />
             </div>
-            <div className="w-80 flex-shrink-0">
+            <div className="w-full lg:w-80 flex-shrink-0">
               <Leaderboard habits={habits} habitLogs={habitLogs} />
             </div>
           </div>
@@ -82,8 +86,8 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-zinc-100 font-sans p-6">
-      <div className="max-w-[1400px] mx-auto flex flex-col gap-6">
+    <div className="min-h-screen bg-black text-zinc-100 font-sans p-2 sm:p-4 md:p-6">
+      <div className="max-w-[1400px] mx-auto flex flex-col gap-4 sm:gap-6">
         
         {/* Header */}
         <Header />

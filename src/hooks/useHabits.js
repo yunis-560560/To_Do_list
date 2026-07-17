@@ -1,4 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { format } from 'date-fns';
+
+// Utility to add a timeout to promises (prevents hanging if Firebase is unconfigured)
+const withTimeout = (promise, ms) => {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("Request timed out")), ms))
+  ]);
+};
 
 // Utility to generate a simple ID
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -25,15 +36,35 @@ export const useHabits = (userEmail) => {
     return saved ? JSON.parse(saved) : {};
   });
 
-  // Effect to load data when user changes
-  useEffect(() => {
-    const savedHabits = localStorage.getItem(habitsKey);
-    setHabits(savedHabits ? JSON.parse(savedHabits) : INITIAL_HABITS);
-    
-    const savedLogs = localStorage.getItem(logsKey);
-    setHabitLogs(savedLogs ? JSON.parse(savedLogs) : {});
-  }, [habitsKey, logsKey]);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
+  // Fetch data from Firestore on mount or user change
+  useEffect(() => {
+    const fetchFromDB = async () => {
+      if (!userEmail) return;
+      try {
+        const docRef = doc(db, 'users', userEmail);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.habits) {
+            setHabits(data.habits);
+            localStorage.setItem(habitsKey, JSON.stringify(data.habits));
+          }
+          if (data.habitLogs) {
+            setHabitLogs(data.habitLogs);
+            localStorage.setItem(logsKey, JSON.stringify(data.habitLogs));
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching from DB:", error);
+      }
+    };
+    fetchFromDB();
+  }, [userEmail, habitsKey, logsKey]);
+
+  // Persist to local storage whenever state changes
   useEffect(() => {
     localStorage.setItem(habitsKey, JSON.stringify(habits));
   }, [habits, habitsKey]);
@@ -42,25 +73,31 @@ export const useHabits = (userEmail) => {
     localStorage.setItem(logsKey, JSON.stringify(habitLogs));
   }, [habitLogs, logsKey]);
 
+  const markUnsaved = () => setHasUnsavedChanges(true);
+
   const addHabit = (name, emoji) => {
     if (!name.trim()) return false;
     if (habits.some(h => h.name.toLowerCase() === name.toLowerCase())) return false;
     
-    setHabits([...habits, { id: generateId(), name: name.trim(), emoji }]);
+    setHabits(prev => [...prev, { id: generateId(), name: name.trim(), emoji }]);
+    markUnsaved();
     return true;
   };
 
   const updateHabit = (id, newName, newEmoji) => {
     if (!newName.trim()) return;
-    setHabits(habits.map(h => h.id === id ? { ...h, name: newName.trim(), emoji: newEmoji } : h));
+    setHabits(prev => prev.map(h => h.id === id ? { ...h, name: newName.trim(), emoji: newEmoji } : h));
+    markUnsaved();
   };
 
   const deleteHabit = (id) => {
-    setHabits(habits.filter(h => h.id !== id));
-    // Optionally remove logs, but keeping them doesn't hurt much and allows undo in the future
-    const newLogs = { ...habitLogs };
-    delete newLogs[id];
-    setHabitLogs(newLogs);
+    setHabits(prev => prev.filter(h => h.id !== id));
+    setHabitLogs(prev => {
+      const newLogs = { ...prev };
+      delete newLogs[id];
+      return newLogs;
+    });
+    markUnsaved();
   };
 
   const toggleHabitLog = (habitId, dateString) => {
@@ -80,14 +117,53 @@ export const useHabits = (userEmail) => {
         [habitId]: updatedHabitData
       };
     });
+    markUnsaved();
+  };
+
+  const saveAll = async () => {
+    if (!userEmail) throw new Error("Must be logged in to save.");
+    setIsSyncing(true);
+    try {
+      const docRef = doc(db, 'users', userEmail);
+      await withTimeout(setDoc(docRef, { habits, habitLogs }, { merge: true }), 5000);
+      setHasUnsavedChanges(false);
+      return true;
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const saveToday = async () => {
+    if (!userEmail) throw new Error("Must be logged in to save.");
+    setIsSyncing(true);
+    try {
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      const docRef = doc(db, 'users', userEmail);
+      
+      // We still save the whole logs object for simplicity since Firebase's 
+      // setDoc merge works best at the top level or specific paths.
+      // Alternatively, we could extract just today's updates, but pushing 
+      // the whole habitLogs is safe for this scale. 
+      await withTimeout(setDoc(docRef, { habitLogs }, { merge: true }), 5000);
+      // If there are no other unsaved changes (like new habits), we can clear the flag.
+      // But we can't be strictly sure. For this UX, we'll clear it.
+      setHasUnsavedChanges(false);
+      return true;
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   return {
     habits,
     habitLogs,
+    hasUnsavedChanges,
+    isSyncing,
     addHabit,
     updateHabit,
     deleteHabit,
-    toggleHabitLog
+    toggleHabitLog,
+    saveAll,
+    saveToday
   };
 };

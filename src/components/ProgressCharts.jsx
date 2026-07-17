@@ -64,7 +64,7 @@ const ProgressCharts = ({ habits = [], habitLogs = {} }) => {
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
       {/* Daily Progress */}
       <div className="bg-zinc-900 rounded-xl p-4 shadow-xl border border-zinc-800">
         <h3 className="text-zinc-400 text-sm font-bold uppercase tracking-wider mb-4">Daily Progress (%)</h3>
