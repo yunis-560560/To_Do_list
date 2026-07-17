@@ -1,85 +1,76 @@
-import { useState, useEffect, useCallback } from 'react';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { useState, useEffect } from 'react';
+import { supabase } from '../supabase';
 import { format } from 'date-fns';
 
-// Utility to add a timeout to promises (prevents hanging if Firebase is unconfigured)
-const withTimeout = (promise, ms) => {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error("Request timed out")), ms))
-  ]);
-};
+const generateId = () => Math.random().toString(36).substr(2, 9); // For optimistic UI
 
-// Utility to generate a simple ID
-const generateId = () => Math.random().toString(36).substr(2, 9);
-
-const INITIAL_HABITS = [
-  { id: 'h1', name: 'Drink Water', emoji: '💧' },
-  { id: 'h2', name: 'Read 10 pages', emoji: '📚' },
-  { id: 'h3', name: 'Exercise', emoji: '🏋️' },
-  { id: 'h4', name: 'Meditate', emoji: '🧘' },
-  { id: 'h5', name: 'Code 1 hour', emoji: '💻' }
-];
-
-export const useHabits = (userEmail) => {
-  const habitsKey = userEmail ? `habits_${userEmail}` : 'habits';
-  const logsKey = userEmail ? `habitLogs_${userEmail}` : 'habitLogs';
-
-  const [habits, setHabits] = useState(() => {
-    const saved = localStorage.getItem(habitsKey);
-    return saved ? JSON.parse(saved) : INITIAL_HABITS;
-  });
-
-  const [habitLogs, setHabitLogs] = useState(() => {
-    const saved = localStorage.getItem(logsKey);
-    return saved ? JSON.parse(saved) : {};
-  });
-
+export const useHabits = (userId) => {
+  const [habits, setHabits] = useState([]);
+  const [habitLogs, setHabitLogs] = useState({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  // Fetch data from Firestore on mount or user change
+  // We will keep an array of optimistic changes to sync
+  const [pendingChanges, setPendingChanges] = useState({
+    habits: [],
+    logs: {}
+  });
+
   useEffect(() => {
-    const fetchFromDB = async () => {
-      if (!userEmail) return;
-      try {
-        const docRef = doc(db, 'users', userEmail);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (data.habits) {
-            setHabits(data.habits);
-            localStorage.setItem(habitsKey, JSON.stringify(data.habits));
-          }
-          if (data.habitLogs) {
-            setHabitLogs(data.habitLogs);
-            localStorage.setItem(logsKey, JSON.stringify(data.habitLogs));
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching from DB:", error);
+    if (!userId) {
+      setHabits([]);
+      setHabitLogs({});
+      return;
+    }
+
+    const fetchData = async () => {
+      // Fetch habits
+      const { data: habitsData, error: habitsError } = await supabase
+        .from('habits')
+        .select('*')
+        .eq('user_id', userId);
+        
+      if (!habitsError && habitsData) {
+        setHabits(habitsData);
+      }
+
+      // Fetch logs
+      const { data: logsData, error: logsError } = await supabase
+        .from('habit_logs')
+        .select('*')
+        .eq('user_id', userId);
+
+      if (!logsError && logsData) {
+        // Transform logs back into { habitId: { dateStr: true } }
+        const logsMap = {};
+        logsData.forEach(log => {
+          if (!logsMap[log.habit_id]) logsMap[log.habit_id] = {};
+          logsMap[log.habit_id][log.log_date] = true;
+        });
+        setHabitLogs(logsMap);
       }
     };
-    fetchFromDB();
-  }, [userEmail, habitsKey, logsKey]);
-
-  // Persist to local storage whenever state changes
-  useEffect(() => {
-    localStorage.setItem(habitsKey, JSON.stringify(habits));
-  }, [habits, habitsKey]);
-
-  useEffect(() => {
-    localStorage.setItem(logsKey, JSON.stringify(habitLogs));
-  }, [habitLogs, logsKey]);
+    
+    fetchData();
+  }, [userId]);
 
   const markUnsaved = () => setHasUnsavedChanges(true);
 
-  const addHabit = (name, emoji) => {
+  const addHabit = async (name, emoji) => {
     if (!name.trim()) return false;
     if (habits.some(h => h.name.toLowerCase() === name.toLowerCase())) return false;
     
-    setHabits(prev => [...prev, { id: generateId(), name: name.trim(), emoji }]);
+    const newHabit = { 
+      // Supabase expects UUIDs, so let it auto-generate, but we need an ID for optimistic UI.
+      // We will let Supabase handle the ID when saving, but we need a temporary one for React keys.
+      id: `temp_${generateId()}`, 
+      name: name.trim(), 
+      emoji,
+      user_id: userId
+    };
+    
+    setHabits(prev => [...prev, newHabit]);
+    setPendingChanges(prev => ({ ...prev, habits: [...prev.habits, newHabit] }));
     markUnsaved();
     return true;
   };
@@ -87,6 +78,22 @@ export const useHabits = (userEmail) => {
   const updateHabit = (id, newName, newEmoji) => {
     if (!newName.trim()) return;
     setHabits(prev => prev.map(h => h.id === id ? { ...h, name: newName.trim(), emoji: newEmoji } : h));
+    
+    setPendingChanges(prev => {
+      // Find if it's already a pending new habit
+      const existingPending = prev.habits.find(h => h.id === id);
+      if (existingPending) {
+        return {
+          ...prev,
+          habits: prev.habits.map(h => h.id === id ? { ...h, name: newName.trim(), emoji: newEmoji } : h)
+        };
+      } else {
+        // It's an existing habit to update
+        const updatedHabits = [...prev.habits, { id, name: newName.trim(), emoji: newEmoji, _isUpdate: true }];
+        return { ...prev, habits: updatedHabits };
+      }
+    });
+    
     markUnsaved();
   };
 
@@ -97,6 +104,12 @@ export const useHabits = (userEmail) => {
       delete newLogs[id];
       return newLogs;
     });
+    
+    setPendingChanges(prev => ({
+      ...prev,
+      habits: [...prev.habits, { id, _isDelete: true }]
+    }));
+    
     markUnsaved();
   };
 
@@ -117,41 +130,107 @@ export const useHabits = (userEmail) => {
         [habitId]: updatedHabitData
       };
     });
+    
+    setPendingChanges(prev => {
+      const logs = { ...prev.logs };
+      if (!logs[habitId]) logs[habitId] = {};
+      
+      // If we are toggling, we record what it SHOULD be now based on state (which we just updated optimistically)
+      // Since state update is async, we can compute it here.
+      const isCurrentlyCompleted = !!(habitLogs[habitId] && habitLogs[habitId][dateString]);
+      logs[habitId][dateString] = !isCurrentlyCompleted;
+      
+      return { ...prev, logs };
+    });
+    
     markUnsaved();
   };
 
   const saveAll = async () => {
-    if (!userEmail) throw new Error("Must be logged in to save.");
+    if (!userId) throw new Error("Must be logged in to save.");
     setIsSyncing(true);
     try {
-      const docRef = doc(db, 'users', userEmail);
-      await withTimeout(setDoc(docRef, { habits, habitLogs }, { merge: true }), 5000);
+      // 1. Process Habits
+      for (const h of pendingChanges.habits) {
+        if (h._isDelete) {
+          // It's a real UUID from DB
+          if (!h.id.startsWith('temp_')) {
+            await supabase.from('habits').delete().eq('id', h.id);
+          }
+        } else if (h._isUpdate) {
+           await supabase.from('habits').update({ name: h.name, emoji: h.emoji }).eq('id', h.id);
+        } else {
+           // Insert new habit
+           const { data, error } = await supabase.from('habits').insert({
+             user_id: userId,
+             name: h.name,
+             emoji: h.emoji
+           }).select().single();
+           
+           if (!error && data) {
+              // We need to update any logs that were associated with 'temp_x' to the new real UUID
+              const tempId = h.id;
+              const realId = data.id;
+              
+              setHabits(current => current.map(ch => ch.id === tempId ? data : ch));
+              
+              // Map pending logs to the real ID
+              if (pendingChanges.logs[tempId]) {
+                 pendingChanges.logs[realId] = pendingChanges.logs[tempId];
+                 delete pendingChanges.logs[tempId];
+              }
+              
+              setHabitLogs(current => {
+                 const newLogs = { ...current };
+                 if (newLogs[tempId]) {
+                    newLogs[realId] = newLogs[tempId];
+                    delete newLogs[tempId];
+                 }
+                 return newLogs;
+              });
+           }
+        }
+      }
+
+      // 2. Process Logs
+      for (const [habitId, dates] of Object.entries(pendingChanges.logs)) {
+        if (habitId.startsWith('temp_')) continue; // Should have been remapped above
+        
+        for (const [dateStr, isCompleted] of Object.entries(dates)) {
+          if (isCompleted) {
+             // Insert log
+             // Using upsert or handling duplicates
+             await supabase.from('habit_logs').upsert({
+                habit_id: habitId,
+                user_id: userId,
+                log_date: dateStr
+             }, { onConflict: 'habit_id,log_date' });
+          } else {
+             // Delete log
+             await supabase.from('habit_logs')
+               .delete()
+               .eq('habit_id', habitId)
+               .eq('user_id', userId)
+               .eq('log_date', dateStr);
+          }
+        }
+      }
+
       setHasUnsavedChanges(false);
+      setPendingChanges({ habits: [], logs: {} });
+      console.log("Supabase write SUCCESS (All)");
       return true;
+    } catch (e) {
+      console.error("Supabase write FAILED (All):", e);
+      throw e;
     } finally {
       setIsSyncing(false);
     }
   };
 
   const saveToday = async () => {
-    if (!userEmail) throw new Error("Must be logged in to save.");
-    setIsSyncing(true);
-    try {
-      const todayStr = format(new Date(), 'yyyy-MM-dd');
-      const docRef = doc(db, 'users', userEmail);
-      
-      // We still save the whole logs object for simplicity since Firebase's 
-      // setDoc merge works best at the top level or specific paths.
-      // Alternatively, we could extract just today's updates, but pushing 
-      // the whole habitLogs is safe for this scale. 
-      await withTimeout(setDoc(docRef, { habitLogs }, { merge: true }), 5000);
-      // If there are no other unsaved changes (like new habits), we can clear the flag.
-      // But we can't be strictly sure. For this UX, we'll clear it.
-      setHasUnsavedChanges(false);
-      return true;
-    } finally {
-      setIsSyncing(false);
-    }
+    // For simplicity, we just save all pending changes as it handles the logic
+    return saveAll();
   };
 
   return {

@@ -1,185 +1,119 @@
-import { useState } from 'react';
-import emailjs from '@emailjs/browser';
+import { useState, useEffect } from 'react';
+import { supabase } from '../supabase';
 
 export const useUser = () => {
-  const [user, setUser] = useState(() => {
-    const sessionEmail = localStorage.getItem('futuremind_session');
-    if (sessionEmail) {
-      const savedAccounts = JSON.parse(localStorage.getItem('futuremind_accounts') || '[]');
-      const activeUser = savedAccounts.find(u => u.email === sessionEmail);
-      return activeUser || null;
-    }
-    return null;
-  });
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const login = (email, password) => {
-    // Check lockout status
-    const lockoutData = JSON.parse(localStorage.getItem('futuremind_lockout') || '{}');
-    const now = Date.now();
-    const attempts = lockoutData[email] || { count: 0, firstAttempt: now };
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
 
-    if (attempts.count >= 5) {
-      if (now - attempts.firstAttempt < 10 * 60 * 1000) { // 10 minutes
-        return { success: false, error: "Too many attempts. Try again in a few minutes." };
-      } else {
-        // Reset after 10 mins
-        attempts.count = 0;
-        attempts.firstAttempt = now;
-      }
-    }
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
 
-    const savedAccounts = JSON.parse(localStorage.getItem('futuremind_accounts') || '[]');
-    const existingUser = savedAccounts.find(u => u.email.toLowerCase() === email.toLowerCase());
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const login = async (email, password) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
     
-    if (!existingUser) {
-      return { success: false, error: "No account found with this email. Try signing up." };
+    if (error) {
+      return { success: false, error: error.message };
     }
-
-    if (existingUser.passwordHash === btoa(password)) {
-      // Success, clear attempts
-      delete lockoutData[email];
-      localStorage.setItem('futuremind_lockout', JSON.stringify(lockoutData));
-      
-      localStorage.setItem('futuremind_session', existingUser.email);
-      setUser(existingUser);
-      return { success: true };
-    } else {
-      // Failed password
-      if (attempts.count === 0) attempts.firstAttempt = now;
-      attempts.count += 1;
-      lockoutData[email] = attempts;
-      localStorage.setItem('futuremind_lockout', JSON.stringify(lockoutData));
-      
-      return { success: false, error: "Incorrect password. Try again." };
-    }
-  };
-
-  const signup = (userData) => {
-    const savedAccounts = JSON.parse(localStorage.getItem('futuremind_accounts') || '[]');
-    
-    // Check if email already exists
-    if (savedAccounts.some(u => u.email.toLowerCase() === userData.email.trim().toLowerCase())) {
-      return { success: false, error: "An account with this email already exists." };
-    }
-
-    const newUser = {
-      ...userData,
-      email: userData.email.trim().toLowerCase(), // normalize email
-      name: userData.name.trim(),
-      passwordHash: btoa(userData.password), // Mock hash
-      createdAt: new Date().toISOString()
-    };
-    delete newUser.password;
-    delete newUser.confirmPassword;
-
-    savedAccounts.push(newUser);
-    localStorage.setItem('futuremind_accounts', JSON.stringify(savedAccounts));
-    localStorage.setItem('futuremind_session', newUser.email);
-    setUser(newUser);
     return { success: true };
   };
 
-  const updateProfile = (updatedData) => {
-    if (!user) return false;
-    
-    let savedAccounts = JSON.parse(localStorage.getItem('futuremind_accounts') || '[]');
-    const userIndex = savedAccounts.findIndex(u => u.email === user.email);
-    
-    if (userIndex !== -1) {
-      const newUser = { ...savedAccounts[userIndex], ...updatedData };
-      if (updatedData.password) {
-        newUser.passwordHash = btoa(updatedData.password);
-        delete newUser.password;
+  const signup = async (userData) => {
+    const { data, error } = await supabase.auth.signUp({
+      email: userData.email,
+      password: userData.password,
+      options: {
+        data: {
+          name: userData.name,
+        }
       }
-      
-      savedAccounts[userIndex] = newUser;
-      localStorage.setItem('futuremind_accounts', JSON.stringify(savedAccounts));
-      
-      // If email was changed, update session
-      if (updatedData.email && updatedData.email !== user.email) {
-        localStorage.setItem('futuremind_session', updatedData.email);
-      }
-      
-      setUser(newUser);
-      return true;
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
     }
-    return false;
+    return { success: true };
   };
 
-  const logout = () => {
-    localStorage.removeItem('futuremind_session');
-    setUser(null);
-  };
-
-  const requestPasswordReset = async (email) => {
-    let savedAccounts = JSON.parse(localStorage.getItem('futuremind_accounts') || '[]');
-    const userIndex = savedAccounts.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
-    
-    // Always return success to prevent email enumeration attacks
-    if (userIndex === -1) return { success: true };
-
-    // Generate token
-    const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    const expires = Date.now() + 30 * 60 * 1000; // 30 mins
-
-    savedAccounts[userIndex].resetToken = token;
-    savedAccounts[userIndex].resetExpires = expires;
-    localStorage.setItem('futuremind_accounts', JSON.stringify(savedAccounts));
-
-    const resetLink = `${window.location.origin}/?resetToken=${token}`;
-
-    try {
-      const SERVICE_ID = import.meta.env.VITE_EMAILJS_SERVICE_ID;
-      const TEMPLATE_ID = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
-      const PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
-
-      if (SERVICE_ID) {
-        await emailjs.send(SERVICE_ID, TEMPLATE_ID, {
-          to_email: email,
-          reset_link: resetLink,
-        }, PUBLIC_KEY);
-      } else {
-        // Fallback for local testing if keys aren't set
-        console.log("===============================================");
-        console.log("Mock Email Sent to: " + email);
-        console.log("Reset Link: " + resetLink);
-        console.log("===============================================");
-      }
-      return { success: true };
-    } catch (error) {
-      console.error("Failed to send email:", error);
-      return { success: false, error: "Couldn't send reset email, please try again." };
+  const updateProfile = async (updatedData) => {
+    const updatePayload = {};
+    if (updatedData.name) {
+      updatePayload.data = { name: updatedData.name };
     }
-  };
-
-  const validateResetToken = (token) => {
-    if (!token) return false;
-    const savedAccounts = JSON.parse(localStorage.getItem('futuremind_accounts') || '[]');
-    const user = savedAccounts.find(u => u.resetToken === token);
+    if (updatedData.password) {
+      updatePayload.password = updatedData.password;
+    }
     
-    if (!user) return false;
-    if (Date.now() > user.resetExpires) return false;
+    const { error } = await supabase.auth.updateUser(updatePayload);
     
+    if (error) {
+      console.error("Update error:", error);
+      return false;
+    }
     return true;
   };
 
-  const confirmPasswordReset = (token, newPassword) => {
-    let savedAccounts = JSON.parse(localStorage.getItem('futuremind_accounts') || '[]');
-    const userIndex = savedAccounts.findIndex(u => u.resetToken === token);
-    
-    if (userIndex === -1) return false;
-    if (Date.now() > savedAccounts[userIndex].resetExpires) return false;
+  const logout = async () => {
+    await supabase.auth.signOut();
+  };
 
-    savedAccounts[userIndex].passwordHash = btoa(newPassword);
-    delete savedAccounts[userIndex].resetToken;
-    delete savedAccounts[userIndex].resetExpires;
+  const requestPasswordReset = async (email) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/`,
+    });
     
-    localStorage.setItem('futuremind_accounts', JSON.stringify(savedAccounts));
+    if (error) {
+      console.error("Password reset error:", error);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  };
+
+  // With Supabase, the user is redirected back to the site with a hash containing the access token.
+  // The session is automatically established by onAuthStateChange.
+  // For the custom UI you had (validateResetToken, confirmPasswordReset), 
+  // Supabase handles the token validation implicitly when they return via the link.
+  // So we just mock validateResetToken as always true if they are logged in or if there is a hash, 
+  // but for simplicity, let's just use the standard Supabase flow:
+  // When they come back with the recovery link, they are logged in, and can just call updateProfile with new password.
+  
+  const validateResetToken = (token) => {
+    // In Supabase, tokens are processed by the client library automatically via the URL hash.
+    // If they have a session, we can let them reset.
+    return true;
+  };
+
+  const confirmPasswordReset = async (token, newPassword) => {
+    // With Supabase, after clicking the reset link, they are signed in and can update their password.
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      console.error(error);
+      return false;
+    }
     return true;
   };
 
   return {
-    user,
+    user: user ? { 
+      email: user.email, 
+      name: user.user_metadata?.name || 'User',
+      id: user.id 
+    } : null,
+    loading,
     login,
     signup,
     updateProfile,

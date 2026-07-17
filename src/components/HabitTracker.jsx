@@ -196,6 +196,7 @@ const HabitTracker = ({ habits, habitLogs, hasUnsavedChanges, isSyncing, onToggl
   };
 
   const handleSaveAll = async () => {
+    console.log("Save button clicked");
     try {
       await onSaveAll();
       showToast("Progress saved ✓");
@@ -205,6 +206,7 @@ const HabitTracker = ({ habits, habitLogs, hasUnsavedChanges, isSyncing, onToggl
   };
 
   const handleSaveToday = async () => {
+    console.log("Update Today's Task button clicked");
     try {
       await onSaveToday();
       showToast("Today's progress updated ✓");

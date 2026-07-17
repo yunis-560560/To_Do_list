@@ -10,8 +10,8 @@ const USER_TYPES = [
   { id: 'other', label: 'Other', icon: Plus, prompt: 'Monthly income amount' }
 ];
 
-const BudgetModule = ({ userEmail }) => {
-  const { budgetProfile, saveBudgetProfile, expenses, addExpense, updateExpense, deleteExpense } = useBudget(userEmail);
+const BudgetModule = ({ userId }) => {
+  const { budgetProfile, saveBudgetProfile, expenses, addExpense, updateExpense, deleteExpense } = useBudget(userId);
   
   // Setup State
   const [selectedType, setSelectedType] = useState(null);

@@ -219,15 +219,15 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
           setErrors({ form: result.error || "An error occurred." });
         }
       } else if (isEditing) {
-        onUpdate(formData);
+        await onUpdate(formData);
         onCancelEdit();
       } else if (isLogin) {
-        const result = onLogin(formData.email, formData.password);
+        const result = await onLogin(formData.email, formData.password);
         if (!result.success) {
           setErrors({ form: result.error });
         }
       } else {
-        const result = onSignup(formData);
+        const result = await onSignup(formData);
         if (!result.success) {
           setErrors({ form: result.error || "An error occurred during signup." });
         }

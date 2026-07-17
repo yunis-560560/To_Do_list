@@ -11,8 +11,8 @@ import { useHabits } from './hooks/useHabits';
 import { useUser } from './hooks/useUser';
 
 function App() {
-  const { user, login, signup, updateProfile, logout, requestPasswordReset, validateResetToken, confirmPasswordReset } = useUser();
-  const { habits, habitLogs, hasUnsavedChanges, isSyncing, addHabit, updateHabit, deleteHabit, toggleHabitLog, saveAll, saveToday } = useHabits(user?.email);
+  const { user, loading, login, signup, updateProfile, logout, requestPasswordReset, validateResetToken, confirmPasswordReset } = useUser();
+  const { habits, habitLogs, hasUnsavedChanges, isSyncing, addHabit, updateHabit, deleteHabit, toggleHabitLog, saveAll, saveToday } = useHabits(user?.id);
   
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem('futuremind_active_tab') || 'dashboard';
@@ -21,6 +21,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem('futuremind_active_tab', activeTab);
   }, [activeTab]);
+
+  if (loading) {
+    return <div className="min-h-screen bg-black flex items-center justify-center text-white">Loading...</div>;
+  }
 
   // If not logged in, show Auth screen full screen
   if (!user) {
@@ -58,7 +62,7 @@ function App() {
           </>
         );
       case 'budget':
-        return <BudgetModule userEmail={user.email} />;
+        return <BudgetModule userId={user.id} />;
       case 'analysis':
         return (
           <div className="flex flex-col lg:flex-row gap-6">
