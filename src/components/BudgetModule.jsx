@@ -11,7 +11,7 @@ const USER_TYPES = [
 ];
 
 const BudgetModule = ({ userId }) => {
-  const { budgetProfile, saveBudgetProfile, expenses, addExpense, updateExpense, deleteExpense } = useBudget(userId);
+  const { loading, budgetProfile, saveBudgetProfile, transactions, addTransaction, updateTransaction, deleteTransaction } = useBudget(userId);
   
   // Setup State
   const [selectedType, setSelectedType] = useState(null);
@@ -28,6 +28,15 @@ const BudgetModule = ({ userId }) => {
       monthlyBudgetGoal: parseFloat(goal)
     });
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12 text-zinc-500">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-orange-500 mr-3"></div>
+        Loading budget data...
+      </div>
+    );
+  }
 
   // If no profile exists, show the One-Time Setup Screen (Step 2)
   if (!budgetProfile) {
@@ -127,10 +136,10 @@ const BudgetModule = ({ userId }) => {
   return (
     <BudgetDashboard 
       budgetProfile={budgetProfile} 
-      expenses={expenses} 
-      addExpense={addExpense} 
-      updateExpense={updateExpense} 
-      deleteExpense={deleteExpense} 
+      transactions={transactions} 
+      addTransaction={addTransaction} 
+      updateTransaction={updateTransaction} 
+      deleteTransaction={deleteTransaction} 
     />
   );
 };

@@ -9,6 +9,7 @@ export const useHabits = (userId) => {
   const [habitLogs, setHabitLogs] = useState({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // We will keep an array of optimistic changes to sync
   const [pendingChanges, setPendingChanges] = useState({
@@ -20,10 +21,12 @@ export const useHabits = (userId) => {
     if (!userId) {
       setHabits([]);
       setHabitLogs({});
+      setLoading(false);
       return;
     }
 
     const fetchData = async () => {
+      setLoading(true);
       // Fetch habits
       const { data: habitsData, error: habitsError } = await supabase
         .from('habits')
@@ -49,6 +52,7 @@ export const useHabits = (userId) => {
         });
         setHabitLogs(logsMap);
       }
+      setLoading(false);
     };
     
     fetchData();
@@ -238,6 +242,7 @@ export const useHabits = (userId) => {
     habitLogs,
     hasUnsavedChanges,
     isSyncing,
+    loading,
     addHabit,
     updateHabit,
     deleteHabit,

@@ -186,7 +186,7 @@ const HabitRow = ({ habit, habitLogs, days, onToggle, onUpdate, onDelete }) => {
   );
 };
 
-const HabitTracker = ({ habits, habitLogs, hasUnsavedChanges, isSyncing, onToggle, onAdd, onUpdate, onDelete, onSaveAll, onSaveToday }) => {
+const HabitTracker = ({ habits, habitLogs, hasUnsavedChanges, isSyncing, loading, onToggle, onAdd, onUpdate, onDelete, onSaveAll, onSaveToday }) => {
   const [newHabitName, setNewHabitName] = useState('');
   const [toastMessage, setToastMessage] = useState(null);
   
@@ -199,7 +199,7 @@ const HabitTracker = ({ habits, habitLogs, hasUnsavedChanges, isSyncing, onToggl
     console.log("Save button clicked");
     try {
       await onSaveAll();
-      showToast("Progress saved ✓");
+      showToast("Tasks saved successfully");
     } catch (e) {
       showToast("Couldn't save, try again", true);
     }
@@ -209,7 +209,7 @@ const HabitTracker = ({ habits, habitLogs, hasUnsavedChanges, isSyncing, onToggl
     console.log("Update Today's Task button clicked");
     try {
       await onSaveToday();
-      showToast("Today's progress updated ✓");
+      showToast("Tasks saved successfully");
     } catch (e) {
       showToast("Couldn't save, try again", true);
     }
@@ -233,6 +233,15 @@ const HabitTracker = ({ habits, habitLogs, hasUnsavedChanges, isSyncing, onToggl
       }
     }
   };
+
+  if (loading) {
+    return (
+      <div className="bg-zinc-900 rounded-xl shadow-xl border border-zinc-800 flex items-center justify-center p-12 text-zinc-500 min-h-[300px]">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-orange-500 mr-3"></div>
+        Loading habits...
+      </div>
+    );
+  }
 
   return (
     <div className="bg-zinc-900 rounded-xl shadow-xl border border-zinc-800 relative">

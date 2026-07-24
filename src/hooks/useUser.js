@@ -39,6 +39,13 @@ export const useUser = () => {
       options: {
         data: {
           name: userData.name,
+          gender: userData.gender || 'Male',
+          age: userData.age || null,
+          weight: userData.weight || null,
+          weightUnit: userData.weightUnit || 'kg',
+          height: userData.height || null,
+          heightUnit: userData.heightUnit || 'cm',
+          profile_image: userData.profile_image || null
         }
       }
     });
@@ -50,21 +57,38 @@ export const useUser = () => {
   };
 
   const updateProfile = async (updatedData) => {
-    const updatePayload = {};
-    if (updatedData.name) {
-      updatePayload.data = { name: updatedData.name };
+    const updatePayload = { data: {} };
+    
+    // Iterate over possible fields to update
+    const fieldsToUpdate = ['name', 'gender', 'age', 'weight', 'weightUnit', 'height', 'heightUnit', 'profile_image'];
+    
+    fieldsToUpdate.forEach(field => {
+      if (updatedData[field] !== undefined) {
+        updatePayload.data[field] = updatedData[field];
+      }
+    });
+
+    // If no metadata fields were updated, remove the empty data object
+    if (Object.keys(updatePayload.data).length === 0) {
+      delete updatePayload.data;
     }
+
     if (updatedData.password) {
       updatePayload.password = updatedData.password;
     }
     
-    const { error } = await supabase.auth.updateUser(updatePayload);
+    const { data, error } = await supabase.auth.updateUser(updatePayload);
     
     if (error) {
       console.error("Update error:", error);
-      return false;
+      return { success: false, error: error.message };
     }
-    return true;
+    
+    if (data?.user) {
+      setUser(data.user);
+    }
+    
+    return { success: true };
   };
 
   const logout = async () => {
@@ -111,6 +135,13 @@ export const useUser = () => {
     user: user ? { 
       email: user.email, 
       name: user.user_metadata?.name || 'User',
+      gender: user.user_metadata?.gender || 'Male',
+      age: user.user_metadata?.age || '',
+      weight: user.user_metadata?.weight || '',
+      weightUnit: user.user_metadata?.weightUnit || 'kg',
+      height: user.user_metadata?.height || '',
+      heightUnit: user.user_metadata?.heightUnit || 'cm',
+      profile_image: user.user_metadata?.profile_image || null,
       id: user.id 
     } : null,
     loading,

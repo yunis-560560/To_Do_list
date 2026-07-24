@@ -12,7 +12,7 @@ import { useUser } from './hooks/useUser';
 
 function App() {
   const { user, loading, login, signup, updateProfile, logout, requestPasswordReset, validateResetToken, confirmPasswordReset } = useUser();
-  const { habits, habitLogs, hasUnsavedChanges, isSyncing, addHabit, updateHabit, deleteHabit, toggleHabitLog, saveAll, saveToday } = useHabits(user?.id);
+  const { habits, habitLogs, hasUnsavedChanges, isSyncing, loading: habitsLoading, addHabit, updateHabit, deleteHabit, toggleHabitLog, saveAll, saveToday } = useHabits(user?.id);
   
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem('futuremind_active_tab') || 'dashboard';
@@ -52,6 +52,7 @@ function App() {
               habitLogs={habitLogs}
               hasUnsavedChanges={hasUnsavedChanges}
               isSyncing={isSyncing}
+              loading={habitsLoading}
               onToggle={toggleHabitLog}
               onAdd={addHabit}
               onUpdate={updateHabit}

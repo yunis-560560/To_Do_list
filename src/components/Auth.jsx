@@ -1,5 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Gamepad2, Eye, EyeOff, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Eye, EyeOff, Loader2, Camera, Upload, X, Check, User } from 'lucide-react';
+import AvatarEditor from 'react-avatar-editor';
+import logo from '../assets/logo.png';
+
+const defaultMaleAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f97316' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E";
+const defaultFemaleAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f97316' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3Cpath d='M15 7c0 2.5-3 5-3 5s-3-2.5-3-5'/%3E%3C/svg%3E";
+const defaultNeutralAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E";
 
 const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswordReset, onValidateResetToken, onConfirmPasswordReset }) => {
   const isEditing = !!user;
@@ -17,17 +23,43 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
   const [formData, setFormData] = useState({
     name: user?.name || '',
     email: user?.email || '',
+    gender: user?.gender || 'Male',
     age: user?.age || '',
     weight: user?.weight || '',
     weightUnit: user?.weightUnit || 'kg',
     height: user?.height || '',
     heightUnit: user?.heightUnit || 'cm',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    profile_image: user?.profile_image || null
   });
 
+  useEffect(() => {
+    if (user && isEditing) {
+      setFormData(prev => ({
+        ...prev,
+        name: user.name || '',
+        email: user.email || '',
+        gender: user.gender || 'Male',
+        age: user.age || '',
+        weight: user.weight || '',
+        weightUnit: user.weightUnit || 'kg',
+        height: user.height || '',
+        heightUnit: user.heightUnit || 'cm',
+        profile_image: user.profile_image || null
+      }));
+    }
+  }, [user, isEditing]);
+
   const [errors, setErrors] = useState({});
+  const [successMsg, setSuccessMsg] = useState("");
   const [touched, setTouched] = useState({});
+
+  // Image Upload States
+  const [uploadFile, setUploadFile] = useState(null);
+  const [isCropping, setIsCropping] = useState(false);
+  const [cropScale, setCropScale] = useState(1.2);
+  const editorRef = useRef(null);
 
   // Check for reset token in URL on mount
   useEffect(() => {
@@ -51,8 +83,8 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
     setTouched({});
     if (!isEditing) {
       setFormData({
-        name: '', email: '', age: '', weight: '', weightUnit: 'kg',
-        height: '', heightUnit: 'cm', password: '', confirmPassword: ''
+        name: '', email: '', gender: 'Male', age: '', weight: '', weightUnit: 'kg',
+        height: '', heightUnit: 'cm', password: '', confirmPassword: '', profile_image: null
       });
     }
   };
@@ -86,7 +118,7 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
           if (!value) error = "Enter a valid weight.";
           else {
             const wNum = parseFloat(value);
-            if (isNaN(wNum) || wNum <= 0 || wNum > 1000) error = "Enter a valid weight.";
+            if (isNaN(wNum) || wNum <= 0 || wNum > 500) error = "Enter a valid weight.";
           }
         }
         break;
@@ -95,7 +127,11 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
           if (!value) error = "Enter a valid height.";
           else {
             const hNum = parseFloat(value);
-            if (isNaN(hNum) || hNum <= 0 || hNum > 400) error = "Enter a valid height.";
+            if (currentFormData.heightUnit === 'ft') {
+              if (isNaN(hNum) || hNum <= 2 || hNum > 10) error = "Height must be between 2 and 10 ft.";
+            } else {
+              if (isNaN(hNum) || hNum <= 30 || hNum > 300) error = "Height must be between 30 and 300 cm.";
+            }
           }
         }
         break;
@@ -132,6 +168,13 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
     if (name === 'password' && (resetToken || !isLogin || isEditing) && touched.confirmPassword) {
       setErrors(prev => ({ ...prev, confirmPassword: validateField('confirmPassword', newFormData.confirmPassword, newFormData) }));
     }
+    
+    if (name === 'heightUnit' && touched.height) {
+      setErrors(prev => ({ ...prev, height: validateField('height', newFormData.height, newFormData) }));
+    }
+    if (name === 'weightUnit' && touched.weight) {
+      setErrors(prev => ({ ...prev, weight: validateField('weight', newFormData.weight, newFormData) }));
+    }
   };
 
   const handleBlur = (e) => {
@@ -149,6 +192,8 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
       fieldsToValidate.push('password', 'confirmPassword');
     } else if (isRequestingReset) {
       fieldsToValidate.push('email');
+    } else if (isEditing) {
+      fieldsToValidate.push('name', 'email', 'age', 'weight', 'height', 'password', 'confirmPassword');
     } else if (isLogin) {
       fieldsToValidate.push('email', 'password');
     } else {
@@ -181,13 +226,43 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
     const fields = [];
     if (resetToken) fields.push('password', 'confirmPassword');
     else if (isRequestingReset) fields.push('email');
+    else if (isEditing) fields.push('name', 'email', 'age', 'weight', 'height', 'password', 'confirmPassword');
     else if (isLogin) fields.push('email', 'password');
     else fields.push('name', 'email', 'age', 'weight', 'height', 'password', 'confirmPassword');
     
     return fields.every(field => {
-      if (!formData[field] && (field !== 'password' || !isEditing)) return false;
+      if (!formData[field] && !(isEditing && (field === 'password' || field === 'confirmPassword'))) return false;
       return !validateField(field, formData[field], formData);
     });
+  };
+
+  const handleImageChange = (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File size exceeds 5MB limit.');
+        return;
+      }
+      setUploadFile(file);
+      setIsCropping(true);
+    }
+  };
+
+  const handleSaveCrop = () => {
+    if (editorRef.current) {
+      const canvas = editorRef.current.getImageScaledToCanvas();
+      const base64Image = canvas.toDataURL('image/jpeg', 0.8);
+      setFormData(prev => ({ ...prev, profile_image: base64Image }));
+      setIsCropping(false);
+      setUploadFile(null);
+    }
+  };
+
+  const getAvatar = () => {
+    if (formData.profile_image) return formData.profile_image;
+    if (formData.gender === 'Male') return defaultMaleAvatar;
+    if (formData.gender === 'Female') return defaultFemaleAvatar;
+    return defaultNeutralAvatar;
   };
 
   const handleSubmit = async (e) => {
@@ -199,10 +274,10 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
 
     try {
       if (resetToken) {
-        if (!isResetTokenValid) return; // Prevent submit if invalid token
+        if (!isResetTokenValid) return;
         const success = onConfirmPasswordReset(resetToken, formData.password);
         if (success) {
-          window.history.replaceState({}, document.title, "/"); // Clear URL
+          window.history.replaceState({}, document.title, "/"); 
           setResetToken(null);
           setIsLogin(true);
           setFormData({ ...formData, password: '', confirmPassword: '' });
@@ -219,8 +294,15 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
           setErrors({ form: result.error || "An error occurred." });
         }
       } else if (isEditing) {
-        await onUpdate(formData);
-        onCancelEdit();
+        const result = await onUpdate(formData);
+        if (result.success) {
+          setSuccessMsg("Profile updated successfully.");
+          setErrors({});
+          setFormData(prev => ({ ...prev, password: '', confirmPassword: '' }));
+        } else {
+          setErrors({ form: result.error || "Unable to update profile. Please try again." });
+          setSuccessMsg("");
+        }
       } else if (isLogin) {
         const result = await onLogin(formData.email, formData.password);
         if (!result.success) {
@@ -237,13 +319,266 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
     }
   };
 
+  // PROFILE DASHBOARD LAYOUT (when isEditing is true)
+  if (isEditing) {
+    return (
+      <div className="w-full py-4 text-zinc-100 font-sans max-w-5xl mx-auto">
+        <div className="flex flex-col md:flex-row gap-6">
+          
+          {/* LEFT SIDE: Profile Photo */}
+          <div className="w-full md:w-1/3 flex flex-col items-center">
+            <div className="bg-zinc-900 rounded-2xl p-8 border border-zinc-800 shadow-xl w-full flex flex-col items-center text-center relative">
+              <h2 className="text-xl font-bold mb-6 text-white w-full text-left">Profile Photo</h2>
+              
+              <div className="relative group w-[150px] h-[150px] mb-6">
+                <img 
+                  src={getAvatar()} 
+                  alt="Profile" 
+                  className="w-full h-full object-cover rounded-full border-4 border-zinc-800 shadow-lg transition-transform duration-300 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center cursor-pointer" onClick={() => document.getElementById('image-upload').click()}>
+                  <Camera className="text-white mb-1" size={24} />
+                  <span className="text-xs font-bold text-white">Upload</span>
+                </div>
+              </div>
+
+              <input 
+                type="file" 
+                id="image-upload" 
+                accept="image/jpeg, image/png, image/webp" 
+                className="hidden" 
+                onChange={handleImageChange}
+              />
+              
+              <div className="flex flex-col gap-3 w-full">
+                <button 
+                  type="button"
+                  onClick={() => document.getElementById('image-upload').click()}
+                  className="w-full py-2.5 px-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-bold text-white transition-colors flex items-center justify-center gap-2"
+                >
+                  <Upload size={16} /> Change Photo
+                </button>
+                {formData.profile_image && (
+                  <button 
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, profile_image: null }))}
+                    className="w-full py-2.5 px-4 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg text-sm font-bold transition-colors"
+                  >
+                    Remove Photo
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT SIDE: User Information & Security */}
+          <div className="w-full md:w-2/3 flex flex-col gap-6">
+            
+            {errors.form && (
+              <div className="bg-red-500/10 border border-red-500/50 text-red-500 px-4 py-3 rounded-xl text-sm text-center font-bold shadow-lg">
+                {errors.form}
+              </div>
+            )}
+            
+            {successMsg && (
+              <div className="bg-green-500/10 border border-green-500/50 text-green-500 px-4 py-3 rounded-xl text-sm text-center font-bold shadow-lg">
+                {successMsg}
+              </div>
+            )}
+
+            <form id="profile-form" onSubmit={handleSubmit} className="flex flex-col gap-6">
+              
+              {/* User Information Card */}
+              <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 shadow-xl relative overflow-hidden group">
+                <div className="absolute top-0 left-0 w-1 h-full bg-orange-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <h2 className="text-xl font-bold mb-6 text-white">User Information</h2>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Full Name</label>
+                    <input 
+                      type="text" name="name" value={formData.name} onChange={handleChange} onBlur={handleBlur}
+                      className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-white outline-none focus:border-orange-500 focus:shadow-[0_0_10px_rgba(249,115,22,0.1)] transition-all"
+                    />
+                    {errors.name && touched.name && <p className="text-red-500 text-xs font-semibold">{errors.name}</p>}
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Email (Read Only)</label>
+                    <input 
+                      type="email" value={formData.email} disabled
+                      className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-zinc-500 outline-none cursor-not-allowed"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Gender</label>
+                    <div className="flex bg-black border border-zinc-800 rounded-xl overflow-hidden p-1">
+                      <button type="button" onClick={() => setFormData({...formData, gender: 'Male'})} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${formData.gender === 'Male' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Male</button>
+                      <button type="button" onClick={() => setFormData({...formData, gender: 'Female'})} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${formData.gender === 'Female' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Female</button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Age</label>
+                    <input 
+                      type="number" name="age" value={formData.age} onChange={handleChange} onBlur={handleBlur}
+                      className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-white outline-none focus:border-orange-500 focus:shadow-[0_0_10px_rgba(249,115,22,0.1)] transition-all"
+                    />
+                    {errors.age && touched.age && <p className="text-red-500 text-xs font-semibold">{errors.age}</p>}
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Weight</label>
+                    <div className="flex">
+                      <input 
+                        type="number" name="weight" value={formData.weight} onChange={handleChange} onBlur={handleBlur}
+                        className="w-full bg-black border border-zinc-800 border-r-0 rounded-l-xl px-4 py-3 text-white outline-none focus:border-orange-500 focus:shadow-[0_0_10px_rgba(249,115,22,0.1)] transition-all"
+                      />
+                      <select 
+                        name="weightUnit" value={formData.weightUnit} onChange={handleChange}
+                        className="bg-zinc-800 border-y border-r border-zinc-800 rounded-r-xl px-3 text-sm font-bold text-zinc-300 outline-none"
+                      >
+                        <option value="kg">kg</option>
+                        <option value="lb">lb</option>
+                      </select>
+                    </div>
+                    {errors.weight && touched.weight && <p className="text-red-500 text-xs font-semibold">{errors.weight}</p>}
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Height</label>
+                    <div className="flex">
+                      <input 
+                        type="number" name="height" value={formData.height} onChange={handleChange} onBlur={handleBlur}
+                        className="w-full bg-black border border-zinc-800 border-r-0 rounded-l-xl px-4 py-3 text-white outline-none focus:border-orange-500 focus:shadow-[0_0_10px_rgba(249,115,22,0.1)] transition-all"
+                      />
+                      <select 
+                        name="heightUnit" value={formData.heightUnit} onChange={handleChange}
+                        className="bg-zinc-800 border-y border-r border-zinc-800 rounded-r-xl px-3 text-sm font-bold text-zinc-300 outline-none"
+                      >
+                        <option value="cm">cm</option>
+                        <option value="ft">ft-in</option>
+                      </select>
+                    </div>
+                    {errors.height && touched.height && <p className="text-red-500 text-xs font-semibold">{errors.height}</p>}
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Security Card */}
+              <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 shadow-xl relative overflow-hidden group">
+                <div className="absolute top-0 left-0 w-1 h-full bg-orange-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <h2 className="text-xl font-bold mb-6 text-white">Security</h2>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">New Password</label>
+                    <div className="relative">
+                      <input 
+                        type={showPassword ? "text" : "password"} name="password" value={formData.password} onChange={handleChange} onBlur={handleBlur}
+                        className="w-full bg-black border border-zinc-800 rounded-xl pl-4 pr-10 py-3 text-white outline-none focus:border-orange-500 focus:shadow-[0_0_10px_rgba(249,115,22,0.1)] transition-all"
+                        placeholder="Leave blank to keep current"
+                      />
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-3.5 text-zinc-500 hover:text-zinc-300">
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                    {errors.password && touched.password && <p className="text-red-500 text-xs font-semibold">{errors.password}</p>}
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Confirm Password</label>
+                    <input 
+                      type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} onBlur={handleBlur}
+                      className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-white outline-none focus:border-orange-500 focus:shadow-[0_0_10px_rgba(249,115,22,0.1)] transition-all"
+                    />
+                    {errors.confirmPassword && touched.confirmPassword && <p className="text-red-500 text-xs font-semibold">{errors.confirmPassword}</p>}
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-4 mt-2">
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setErrors({});
+                    setSuccessMsg("");
+                    setFormData({
+                      name: user?.name || '',
+                      email: user?.email || '',
+                      gender: user?.gender || 'Male',
+                      age: user?.age || '',
+                      weight: user?.weight || '',
+                      weightUnit: user?.weightUnit || 'kg',
+                      height: user?.height || '',
+                      heightUnit: user?.heightUnit || 'cm',
+                      password: '',
+                      confirmPassword: '',
+                      profile_image: user?.profile_image || null
+                    });
+                  }} 
+                  disabled={isSubmitting}
+                  className="px-8 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-xl transition-all shadow-md hover:shadow-lg disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" form="profile-form" id="save-btn" disabled={isSubmitting || !isFormValid()}
+                  className="px-8 py-3 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-bold rounded-xl transition-all shadow-[0_0_15px_rgba(249,115,22,0.3)] hover:shadow-[0_0_25px_rgba(249,115,22,0.5)] flex items-center justify-center disabled:opacity-50 disabled:shadow-none"
+                >
+                  {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : 'Save Changes'}
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+
+        {/* Cropping Modal */}
+        {isCropping && uploadFile && (
+          <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
+            <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 shadow-2xl flex flex-col items-center max-w-md w-full">
+              <h3 className="text-lg font-bold text-white mb-4">Crop Profile Picture</h3>
+              <div className="bg-black p-2 rounded-xl border border-zinc-800 mb-4 overflow-hidden flex justify-center w-full">
+                 <AvatarEditor
+                  ref={editorRef}
+                  image={uploadFile}
+                  width={250}
+                  height={250}
+                  border={30}
+                  borderRadius={125}
+                  color={[0, 0, 0, 0.6]} 
+                  scale={cropScale}
+                  rotate={0}
+                />
+              </div>
+              <input 
+                type="range" min="1" max="3" step="0.01" value={cropScale} 
+                onChange={(e) => setCropScale(parseFloat(e.target.value))} 
+                className="w-full mb-6 accent-orange-500"
+              />
+              <div className="flex gap-4 w-full">
+                <button type="button" onClick={() => { setIsCropping(false); setUploadFile(null); }} className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl font-bold text-white transition-colors">Cancel</button>
+                <button type="button" onClick={handleSaveCrop} className="flex-1 py-3 bg-orange-500 hover:bg-orange-600 rounded-xl font-bold text-white shadow-[0_0_15px_rgba(249,115,22,0.3)] transition-colors">Save</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // LOGIN / SIGNUP PAGE (when isEditing is false)
   return (
-    <div className={`${isEditing ? 'w-full py-8' : 'min-h-screen p-6'} bg-black flex flex-col items-center justify-center text-zinc-100 font-sans`}>
+    <div className="min-h-screen p-6 bg-black flex flex-col items-center justify-center text-zinc-100 font-sans">
       <div className="w-full max-w-md bg-zinc-900 rounded-2xl shadow-2xl border border-zinc-800 p-8">
         
         <div className="flex flex-col items-center mb-6">
-          <div className="p-3 bg-orange-500/20 rounded-xl text-orange-500 mb-4">
-            <Gamepad2 size={40} />
+          <div className="flex items-center justify-center rounded-xl overflow-hidden w-20 h-20 mb-4 shadow-md">
+            <img src={logo} alt="FutureMind Logo" className="w-full h-full object-cover scale-125" />
           </div>
           <h1 className="text-3xl font-bold tracking-wider text-white">
             FUTURE<span className="text-orange-500">MIND</span>
@@ -251,13 +586,12 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
           <p className="text-zinc-500 mt-2 text-sm text-center">
             {resetToken ? 'Set New Password' 
               : isRequestingReset ? 'Password Recovery' 
-              : isEditing ? 'Update your profile' 
               : isLogin ? 'Welcome back to the game' 
               : 'Create your character profile'}
           </p>
         </div>
 
-        {!isEditing && !isRequestingReset && !resetToken && (
+        {!isRequestingReset && !resetToken && (
           <div className="flex w-full mb-6 bg-zinc-800 rounded-lg overflow-hidden">
             <button 
               type="button"
@@ -305,15 +639,11 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
           <form onSubmit={handleSubmit} className="space-y-4">
             
             {/* Full Name */}
-            {(!isLogin || isEditing) && !isRequestingReset && !resetToken && (
+            {!isLogin && !isRequestingReset && !resetToken && (
               <div>
                 <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Full Name</label>
                 <input 
-                  type="text" 
-                  name="name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
+                  type="text" name="name" value={formData.name} onChange={handleChange} onBlur={handleBlur}
                   className={`w-full bg-black border rounded-lg px-4 py-2 text-white outline-none transition-colors ${errors.name && touched.name ? 'border-red-500' : 'border-zinc-800 focus:border-orange-500'}`}
                   placeholder="e.g. John Doe"
                 />
@@ -326,11 +656,7 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
               <div>
                 <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Email</label>
                 <input 
-                  type="email" 
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
+                  type="email" name="email" value={formData.email} onChange={handleChange} onBlur={handleBlur}
                   className={`w-full bg-black border rounded-lg px-4 py-2 text-white outline-none transition-colors ${errors.email && touched.email ? 'border-red-500' : 'border-zinc-800 focus:border-orange-500'}`}
                   placeholder="e.g. you@example.com"
                 />
@@ -340,15 +666,20 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
 
             {!isLogin && !isRequestingReset && !resetToken && (
               <>
+                {/* Gender */}
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Gender</label>
+                  <div className="flex bg-black border border-zinc-800 rounded-lg overflow-hidden p-1">
+                    <button type="button" onClick={() => setFormData({...formData, gender: 'Male'})} className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-colors ${formData.gender === 'Male' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Male</button>
+                    <button type="button" onClick={() => setFormData({...formData, gender: 'Female'})} className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-colors ${formData.gender === 'Female' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Female</button>
+                  </div>
+                </div>
+
                 {/* Age */}
                 <div>
                   <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Age</label>
                   <input 
-                    type="number" 
-                    name="age"
-                    value={formData.age}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
+                    type="number" name="age" value={formData.age} onChange={handleChange} onBlur={handleBlur}
                     className={`w-full bg-black border rounded-lg px-4 py-2 text-white outline-none transition-colors ${errors.age && touched.age ? 'border-red-500' : 'border-zinc-800 focus:border-orange-500'}`}
                     placeholder="e.g. 25"
                   />
@@ -361,17 +692,11 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
                     <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Weight</label>
                     <div className="flex">
                       <input 
-                        type="number" 
-                        name="weight"
-                        value={formData.weight}
-                        onChange={handleChange}
-                        onBlur={handleBlur}
+                        type="number" name="weight" value={formData.weight} onChange={handleChange} onBlur={handleBlur}
                         className={`w-full bg-black border border-r-0 rounded-l-lg px-3 py-2 text-white outline-none transition-colors ${errors.weight && touched.weight ? 'border-red-500' : 'border-zinc-800 focus:border-orange-500'}`}
                       />
                       <select 
-                        name="weightUnit" 
-                        value={formData.weightUnit} 
-                        onChange={handleChange}
+                        name="weightUnit" value={formData.weightUnit} onChange={handleChange}
                         className={`bg-zinc-800 border-y border-r rounded-r-lg px-2 text-sm text-zinc-300 outline-none transition-colors ${errors.weight && touched.weight ? 'border-red-500' : 'border-zinc-800 focus:border-orange-500'}`}
                       >
                         <option value="kg">kg</option>
@@ -385,17 +710,11 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
                     <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Height</label>
                     <div className="flex">
                       <input 
-                        type="number" 
-                        name="height"
-                        value={formData.height}
-                        onChange={handleChange}
-                        onBlur={handleBlur}
+                        type="number" name="height" value={formData.height} onChange={handleChange} onBlur={handleBlur}
                         className={`w-full bg-black border border-r-0 rounded-l-lg px-3 py-2 text-white outline-none transition-colors ${errors.height && touched.height ? 'border-red-500' : 'border-zinc-800 focus:border-orange-500'}`}
                       />
                       <select 
-                        name="heightUnit" 
-                        value={formData.heightUnit} 
-                        onChange={handleChange}
+                        name="heightUnit" value={formData.heightUnit} onChange={handleChange}
                         className={`bg-zinc-800 border-y border-r rounded-r-lg px-2 text-sm text-zinc-300 outline-none transition-colors ${errors.height && touched.height ? 'border-red-500' : 'border-zinc-800 focus:border-orange-500'}`}
                       >
                         <option value="cm">cm</option>
@@ -413,7 +732,7 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
               <div>
                 <div className="flex justify-between mb-1">
                   <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider">{resetToken ? 'New Password' : 'Password'}</label>
-                  {isLogin && !isEditing && !resetToken && (
+                  {isLogin && !resetToken && (
                     <button 
                       type="button" 
                       onClick={() => { setIsRequestingReset(true); setErrors({}); setTouched({}); }}
@@ -425,27 +744,18 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
                 </div>
                 <div className="relative">
                   <input 
-                    type={showPassword ? "text" : "password"} 
-                    name="password"
-                    value={formData.password}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
+                    type={showPassword ? "text" : "password"} name="password" value={formData.password} onChange={handleChange} onBlur={handleBlur}
                     className={`w-full bg-black border rounded-lg pl-4 pr-10 py-2 text-white outline-none transition-colors ${errors.password && touched.password ? 'border-red-500' : 'border-zinc-800 focus:border-orange-500'}`}
                     placeholder={(!isLogin || resetToken) ? "Min. 8 characters" : "Enter password"}
                   />
-                  <button 
-                    type="button" 
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-2.5 text-zinc-500 hover:text-zinc-300 transition-colors"
-                    tabIndex="-1"
-                  >
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-2.5 text-zinc-500 hover:text-zinc-300 transition-colors" tabIndex="-1">
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
                 {errors.password && touched.password && <p className="text-red-500 text-xs mt-1 font-semibold">{errors.password}</p>}
                 
                 {/* Password Strength Indicator */}
-                {(!isLogin || resetToken || isEditing) && formData.password.length > 0 && (
+                {(!isLogin || resetToken) && formData.password.length > 0 && (
                   <div className="flex items-center gap-2 mt-2">
                     <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                       <div className={`h-full transition-all duration-300 ${pwdStrength.color}`} style={{ width: pwdStrength.text === 'Weak' ? '33%' : pwdStrength.text === 'Medium' ? '66%' : '100%' }}></div>
@@ -459,15 +769,11 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
             )}
 
             {/* Confirm Password */}
-            {(!isLogin || resetToken || (isEditing && formData.password)) && !isRequestingReset && (
+            {(!isLogin || resetToken) && !isRequestingReset && (
               <div>
                 <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Confirm Password</label>
                 <input 
-                  type="password" 
-                  name="confirmPassword"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
+                  type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} onBlur={handleBlur}
                   className={`w-full bg-black border rounded-lg px-4 py-2 text-white outline-none transition-colors ${errors.confirmPassword && touched.confirmPassword ? 'border-red-500' : 'border-zinc-800 focus:border-orange-500'}`}
                 />
                 {errors.confirmPassword && touched.confirmPassword && <p className="text-red-500 text-xs mt-1 font-semibold">{errors.confirmPassword}</p>}
@@ -475,35 +781,25 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
             )}
 
             <div className="flex gap-4 mt-6">
-              {(isEditing || isRequestingReset) && (
+              {isRequestingReset && (
                 <button 
-                  type="button" 
-                  onClick={() => {
-                    if (isRequestingReset) setIsRequestingReset(false);
-                    else onCancelEdit();
-                    setErrors({});
-                    setTouched({});
-                  }}
-                  className="w-1/3 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 px-4 rounded-lg transition-colors"
-                  disabled={isSubmitting}
+                  type="button" onClick={() => { setIsRequestingReset(false); setErrors({}); setTouched({}); }}
+                  className="w-1/3 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 px-4 rounded-lg transition-colors" disabled={isSubmitting}
                 >
                   CANCEL
                 </button>
               )}
               <button 
-                type="submit" 
-                disabled={isSubmitting || !isFormValid()}
+                type="submit" disabled={isSubmitting || !isFormValid()}
                 className={`flex items-center justify-center font-bold py-3 px-4 rounded-lg transition-all 
-                  ${(isEditing || isRequestingReset) ? 'w-2/3' : 'w-full'}
+                  ${isRequestingReset ? 'w-2/3' : 'w-full'}
                   ${isSubmitting || !isFormValid() 
                     ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
                     : 'bg-orange-500 hover:bg-orange-600 text-white shadow-[0_0_15px_rgba(249,115,22,0.3)] hover:shadow-[0_0_25px_rgba(249,115,22,0.5)]'
                   }`}
               >
-                {isSubmitting ? (
-                  <Loader2 className="animate-spin" size={20} />
-                ) : (
-                  resetToken ? 'RESET PASSWORD' : (isRequestingReset ? 'SEND RESET LINK' : (isEditing ? 'SAVE CHANGES' : (isLogin ? 'LOG IN' : 'CREATE ACCOUNT')))
+                {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : (
+                  resetToken ? 'RESET PASSWORD' : (isRequestingReset ? 'SEND RESET LINK' : (isLogin ? 'LOG IN' : 'CREATE ACCOUNT'))
                 )}
               </button>
             </div>
