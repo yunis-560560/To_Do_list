@@ -187,17 +187,17 @@ const BudgetDashboard = ({ budgetProfile, transactions, addTransaction, updateTr
           <input 
             type="date" 
             value={entryDate}
-            onChange={e => setEntryDate(e.target.value)}
+            onChange={e => { setEntryDate(e.target.value); setEntryError(''); }}
             className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-orange-500 shrink-0"
           />
           
           <div className="relative shrink-0 md:w-32">
-            <span className="absolute left-3 top-2.5 text-zinc-500 font-bold text-sm">₹</span>
+            <span className="absolute left-3 top-2.5 text-zinc-500 font-bold text-sm pointer-events-none">₹</span>
             <input 
               type="number" 
               step="0.01"
               value={entryAmount}
-              onChange={e => setEntryAmount(e.target.value)}
+              onChange={e => { setEntryAmount(e.target.value); setEntryError(''); }}
               placeholder="Amount"
               className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-7 pr-3 py-2 text-sm text-white outline-none focus:border-orange-500"
             />

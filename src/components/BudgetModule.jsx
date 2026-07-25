@@ -86,7 +86,7 @@ const BudgetModule = ({ userId }) => {
                   {selectedType.prompt}
                 </label>
                 <div className="relative">
-                  <span className="absolute left-4 top-3 text-zinc-500 font-bold">₹</span>
+                  <span className="absolute left-4 top-3 text-zinc-500 font-bold pointer-events-none">₹</span>
                   <input 
                     type="number"
                     required
@@ -104,7 +104,7 @@ const BudgetModule = ({ userId }) => {
                 </label>
                 <p className="text-xs text-zinc-500 mb-2">How much do you intend to spend this month? (This becomes your limit)</p>
                 <div className="relative">
-                  <span className="absolute left-4 top-3 text-zinc-500 font-bold">₹</span>
+                  <span className="absolute left-4 top-3 text-zinc-500 font-bold pointer-events-none">₹</span>
                   <input 
                     type="number"
                     required
