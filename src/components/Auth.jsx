@@ -500,7 +500,7 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
               </div>
 
               {/* Action Buttons */}
-              <div className="flex justify-end gap-4 mt-2">
+              <div className="fixed bottom-0 left-0 right-0 p-4 bg-zinc-900 border-t border-zinc-800 flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4 z-40 md:relative md:p-0 md:bg-transparent md:border-none md:mt-2 md:flex-row">
                 <button 
                   type="button" 
                   onClick={() => {
@@ -521,13 +521,13 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
                     });
                   }} 
                   disabled={isSubmitting}
-                  className="px-8 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-xl transition-all shadow-md hover:shadow-lg disabled:opacity-50"
+                  className="w-full sm:w-auto px-8 py-3 min-h-[48px] bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-xl transition-all shadow-md hover:shadow-lg disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit" form="profile-form" id="save-btn" disabled={isSubmitting || !isFormValid()}
-                  className="px-8 py-3 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-bold rounded-xl transition-all shadow-[0_0_15px_rgba(249,115,22,0.3)] hover:shadow-[0_0_25px_rgba(249,115,22,0.5)] flex items-center justify-center disabled:opacity-50 disabled:shadow-none"
+                  className="w-full sm:w-auto px-8 py-3 min-h-[48px] bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-bold rounded-xl transition-all shadow-[0_0_15px_rgba(249,115,22,0.3)] hover:shadow-[0_0_25px_rgba(249,115,22,0.5)] flex items-center justify-center disabled:opacity-50 disabled:shadow-none"
                 >
                   {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : 'Save Changes'}
                 </button>
@@ -595,14 +595,14 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
           <div className="flex w-full mb-6 bg-zinc-800 rounded-lg overflow-hidden">
             <button 
               type="button"
-              className={`flex-1 py-3 text-sm font-bold transition-colors ${isLogin ? 'bg-orange-500 text-white' : 'text-zinc-400 hover:bg-zinc-700'}`}
+              className={`flex-1 py-3 min-h-[48px] text-sm font-bold transition-colors ${isLogin ? 'bg-orange-500 text-white' : 'text-zinc-400 hover:bg-zinc-700'}`}
               onClick={() => handleTabSwitch(true)}
             >
               LOG IN
             </button>
             <button 
               type="button"
-              className={`flex-1 py-3 text-sm font-bold transition-colors ${!isLogin ? 'bg-orange-500 text-white' : 'text-zinc-400 hover:bg-zinc-700'}`}
+              className={`flex-1 py-3 min-h-[48px] text-sm font-bold transition-colors ${!isLogin ? 'bg-orange-500 text-white' : 'text-zinc-400 hover:bg-zinc-700'}`}
               onClick={() => handleTabSwitch(false)}
             >
               SIGN UP
@@ -791,7 +791,7 @@ const Auth = ({ user, onSignup, onLogin, onUpdate, onCancelEdit, onRequestPasswo
               )}
               <button 
                 type="submit" disabled={isSubmitting || !isFormValid()}
-                className={`flex items-center justify-center font-bold py-3 px-4 rounded-lg transition-all 
+                className={`flex items-center justify-center font-bold py-3 px-4 min-h-[48px] rounded-lg transition-all 
                   ${isRequestingReset ? 'w-2/3' : 'w-full'}
                   ${isSubmitting || !isFormValid() 
                     ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 

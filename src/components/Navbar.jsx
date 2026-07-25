@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { UserCircle, Settings, LogOut, LayoutDashboard, Wallet, BarChart3, User } from 'lucide-react';
+import { UserCircle, Settings, LogOut, LayoutDashboard, Wallet, BarChart3, User, Menu, X } from 'lucide-react';
 
 const Navbar = ({ activeTab, onTabChange, user, onLogout }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const profileRef = useRef(null);
 
   useEffect(() => {
@@ -24,13 +25,23 @@ const Navbar = ({ activeTab, onTabChange, user, onLogout }) => {
 
   return (
     <nav className="bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl p-2 sticky top-2 sm:top-4 z-50 flex items-center justify-between gap-2">
-      {/* Left side: Tabs */}
-      <div className="flex items-center gap-1 overflow-x-auto custom-scrollbar flex-1 min-w-0 pb-1 sm:pb-0">
+      {/* Mobile Hamburger Menu Button */}
+      <div className="md:hidden flex items-center">
+        <button 
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="p-2 text-zinc-400 hover:text-white transition-colors"
+        >
+          {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
+      </div>
+
+      {/* Left side: Tabs (Desktop only) */}
+      <div className="hidden md:flex items-center gap-1 flex-1 min-w-0">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
-            className={`flex flex-shrink-0 items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${
+            className={`flex flex-shrink-0 items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition-all min-h-[48px] ${
               activeTab === tab.id 
                 ? 'bg-orange-500 text-white shadow-[0_0_15px_rgba(249,115,22,0.3)]' 
                 : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
@@ -66,7 +77,7 @@ const Navbar = ({ activeTab, onTabChange, user, onLogout }) => {
                 <p className="text-xs font-bold text-zinc-200 mt-1">{user.weight} {user.weightUnit} • {user.height} {user.heightUnit}</p>
               </div>
               <button 
-                className="w-full flex items-center gap-2 px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-700 transition-colors"
+                className="w-full flex items-center gap-2 px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-700 transition-colors min-h-[48px]"
                 onClick={() => {
                   setIsProfileOpen(false);
                   onTabChange('profile');
@@ -75,7 +86,7 @@ const Navbar = ({ activeTab, onTabChange, user, onLogout }) => {
                 <Settings size={16} /> Edit Profile
               </button>
               <button 
-                className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-400 hover:bg-zinc-700 transition-colors"
+                className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-400 hover:bg-zinc-700 transition-colors min-h-[48px]"
                 onClick={() => {
                   setIsProfileOpen(false);
                   onLogout();
@@ -87,6 +98,40 @@ const Navbar = ({ activeTab, onTabChange, user, onLogout }) => {
           )}
         </div>
       </div>
+
+      {/* Mobile Navigation Menu Overlay */}
+      {isMobileMenuOpen && (
+        <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-2 z-50 flex flex-col gap-1 md:hidden">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => {
+                onTabChange(tab.id);
+                setIsMobileMenuOpen(false);
+              }}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-bold transition-all min-h-[48px] ${
+                activeTab === tab.id 
+                  ? 'bg-orange-500 text-white' 
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+              }`}
+            >
+              <tab.icon size={20} />
+              {tab.label}
+            </button>
+          ))}
+          <div className="h-px bg-zinc-800 my-1 mx-2"></div>
+          <button
+            onClick={() => {
+              onLogout();
+              setIsMobileMenuOpen(false);
+            }}
+            className="flex items-center gap-3 px-4 py-3 rounded-lg text-base font-bold text-red-400 hover:bg-zinc-800 transition-all min-h-[48px]"
+          >
+            <LogOut size={20} />
+            Log Out
+          </button>
+        </div>
+      )}
     </nav>
   );
 };

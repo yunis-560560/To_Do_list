@@ -24,3 +24,107 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #3f3f46;
 }
+
+/* =========================================
+   AppLoader Animations
+========================================= */
+
+/* Logo Container (Fade + Scale + Float) */
+.loader-wrapper {
+  animation: logo-fade-in 0.4s ease-out forwards;
+}
+
+.loader-logo-container {
+  animation: logo-scale 0.6s ease-out forwards, float 2s ease-in-out infinite 0.6s;
+}
+
+/* Glowing Pulse Behind Logo */
+.loader-pulse-glow {
+  background: radial-gradient(circle, rgba(255,106,0,0.4) 0%, rgba(255,106,0,0) 70%);
+  animation: pulse-glow 2s infinite;
+}
+
+/* Rotating Ring */
+.loader-spin-ring {
+  animation: spin-ring 1.2s linear infinite;
+  box-shadow: 0 0 15px rgba(255,106,0,0.3);
+}
+
+/* Text Fade */
+.animate-fade-text {
+  animation: fade-text 2.5s ease-in-out infinite;
+}
+
+/* Particles Background */
+.loader-particles {
+  position: absolute;
+  inset: 0;
+}
+
+.particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background-color: #ff6a00;
+  border-radius: 50%;
+  opacity: 0;
+  box-shadow: 0 0 10px #ff6a00;
+}
+
+.particle.p1 { left: 20%; top: 80%; animation: particle-float 3s ease-in infinite 0.1s; }
+.particle.p2 { left: 80%; top: 90%; animation: particle-float 4s ease-in infinite 0.5s; }
+.particle.p3 { left: 45%; top: 70%; animation: particle-float 3.5s ease-in infinite 1.2s; }
+.particle.p4 { left: 70%; top: 85%; animation: particle-float 4.5s ease-in infinite 0.8s; }
+.particle.p5 { left: 30%; top: 75%; animation: particle-float 3.2s ease-in infinite 2.0s; }
+
+/* Keyframes */
+@keyframes logo-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes logo-scale {
+  0% { transform: scale(0.9); }
+  70% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+@keyframes spin-ring {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.2; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.3); }
+}
+
+@keyframes fade-text {
+  0%, 100% { opacity: 0; transform: translateY(5px); }
+  10%, 90% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes particle-float {
+  0% { transform: translateY(0); opacity: 0; }
+  10% { opacity: 0.6; }
+  90% { opacity: 0.6; }
+  100% { transform: translateY(-100px); opacity: 0; }
+}
+
+/* Accessibility: Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  .loader-logo-container {
+    animation: none; /* Disable float and scale */
+  }
+  .loader-spin-ring, .loader-pulse-glow, .particle {
+    display: none; /* Hide purely decorative animations */
+  }
+  .animate-fade-text {
+    animation: none; /* Just show the text */
+  }
+}
