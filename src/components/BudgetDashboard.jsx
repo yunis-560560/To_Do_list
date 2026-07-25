@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, Trash2, Edit2, Save, X, AlertTriangle, Info, TrendingUp, TrendingDown, ArrowRight, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { PieChart, Pie, Cell, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { format, startOfMonth, endOfMonth, isWithinInterval, differenceInDays, getDate } from 'date-fns';
 
 const EXPENSE_CATEGORIES = ['Food', 'Transport', 'Bills', 'Shopping', 'Entertainment', 'Education', 'Other'];
@@ -49,13 +50,51 @@ const BudgetDashboard = ({ budgetProfile, transactions, addTransaction, updateTr
   const recommendedDaily = daysLeftInMonth > 0 ? (remainingBudget / daysLeftInMonth) : 0;
   const actualAverage = daysElapsed > 0 ? (totalSpentThisMonth / daysElapsed) : 0;
 
+  // Chart Data Calculations
+  const spendPercentage = goal > 0 ? Math.min(Math.round((totalSpentThisMonth / goal) * 100), 100) : 0;
+  const getGaugeColor = (pct) => {
+    if (pct >= 90) return '#ef4444'; // Red
+    if (pct >= 75) return '#f59e0b'; // Yellow
+    return '#10b981'; // Emerald/Green
+  };
+  const gaugeColor = getGaugeColor(spendPercentage);
+  const gaugeData = [
+    { name: 'Spent', value: spendPercentage, color: gaugeColor },
+    { name: 'Remaining', value: 100 - spendPercentage, color: '#27272a' }
+  ];
+
+  const trendData = useMemo(() => {
+    const totalDays = getDate(currentMonthEnd);
+    let cumulativeSpend = 0;
+    
+    return Array.from({ length: totalDays }, (_, i) => {
+      const day = i + 1;
+      if (day > daysElapsed) {
+        return { day }; // No spend plotted for future days
+      }
+      
+      const dayTransactions = currentMonthTransactions.filter(t => {
+        const tDate = new Date(t.date);
+        return tDate.getDate() === day && t.type === 'expense';
+      });
+      
+      const daySpend = dayTransactions.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+      cumulativeSpend += daySpend;
+      
+      return {
+        day,
+        spend: cumulativeSpend
+      };
+    });
+  }, [currentMonthTransactions, currentMonthEnd, daysElapsed]);
+
   // Handle Form Category change when type changes
   const handleTypeChange = (newType) => {
     setEntryType(newType);
     setEntryCategory(newType === 'expense' ? EXPENSE_CATEGORIES[0] : INCOME_CATEGORIES[0]);
   };
 
-  const handleAddTransaction = (e) => {
+  const handleAddTransaction = async (e) => {
     e.preventDefault();
     setEntryError('');
     
@@ -69,18 +108,22 @@ const BudgetDashboard = ({ budgetProfile, transactions, addTransaction, updateTr
       return;
     }
 
-    addTransaction({
+    const { success, error } = await addTransaction({
       type: entryType,
       date: entryDate,
       amount: amt,
       category: entryCategory,
-      title: entryNote
+      note: entryNote
     });
 
-    // Reset form
-    setEntryAmount('');
-    setEntryNote('');
-    setEntryDate(todayStr);
+    if (success) {
+      // Reset form on success
+      setEntryAmount('');
+      setEntryNote('');
+      setEntryDate(todayStr);
+    } else {
+      setEntryError(`Failed to save: ${error?.message || 'Unknown error'}`);
+    }
   };
 
   const startEditing = (transaction) => {
@@ -90,7 +133,7 @@ const BudgetDashboard = ({ budgetProfile, transactions, addTransaction, updateTr
       date: transaction.date,
       amount: transaction.amount,
       category: transaction.category,
-      title: transaction.title || ''
+      note: transaction.note || ''
     });
   };
 
@@ -170,6 +213,73 @@ const BudgetDashboard = ({ budgetProfile, transactions, addTransaction, updateTr
         </div>
       </div>
 
+      {/* CHARTS SECTION */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+        {/* Gauge Chart */}
+        <div className="bg-black border border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center relative">
+          <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-2 self-start">Target Gauge</h3>
+          <div className="w-full h-48 -mb-10">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={gaugeData}
+                  cx="50%"
+                  cy="100%"
+                  startAngle={180}
+                  endAngle={0}
+                  innerRadius={70}
+                  outerRadius={90}
+                  dataKey="value"
+                  stroke="none"
+                >
+                  {gaugeData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="text-center pb-4">
+            <span className="text-3xl font-bold text-white">{spendPercentage}%</span>
+            <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mt-1">OF MONTHLY GOAL</p>
+          </div>
+        </div>
+
+        {/* Trend Chart */}
+        <div className="bg-black border border-zinc-800 rounded-xl p-4 lg:col-span-2">
+          <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-4">Cumulative Spending Trend</h3>
+          {totalSpentThisMonth === 0 ? (
+            <div className="h-48 flex items-center justify-center border-2 border-dashed border-zinc-800 rounded-lg">
+              <p className="text-zinc-500 text-sm font-bold uppercase tracking-wider">No expenses yet - Add your first expense!</p>
+            </div>
+          ) : (
+            <div className="h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorSpend" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={gaugeColor} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={gaugeColor} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                  <XAxis dataKey="day" stroke="#71717a" tick={{ fill: '#71717a', fontSize: 12 }} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#71717a" tick={{ fill: '#71717a', fontSize: 12 }} tickLine={false} axisLine={false} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '8px', color: '#fff' }} 
+                    itemStyle={{ color: '#fff' }}
+                    labelStyle={{ color: '#71717a', marginBottom: '4px' }}
+                    formatter={(value) => [`₹${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Spent']}
+                    labelFormatter={(label) => `Day ${label}`}
+                  />
+                  <Area type="monotone" dataKey="spend" stroke={gaugeColor} strokeWidth={3} fillOpacity={1} fill="url(#colorSpend)" isAnimationActive={true} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* QUICK ENTRY FORM */}
       <div className="bg-black p-4 rounded-xl border border-zinc-800">
         <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-4">Quick Entry</h3>
@@ -188,7 +298,7 @@ const BudgetDashboard = ({ budgetProfile, transactions, addTransaction, updateTr
             type="date" 
             value={entryDate}
             onChange={e => { setEntryDate(e.target.value); setEntryError(''); }}
-            className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-orange-500 shrink-0"
+            className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-orange-500 shrink-0 [color-scheme:dark]"
           />
           
           <div className="relative shrink-0 md:w-32">
@@ -266,7 +376,7 @@ const BudgetDashboard = ({ budgetProfile, transactions, addTransaction, updateTr
                           </select>
                         </td>
                         <td className="px-4 py-2">
-                          <input type="date" value={editValues.date} onChange={e => setEditValues({...editValues, date: e.target.value})} className="bg-black border border-zinc-700 rounded px-2 py-1 text-xs w-full outline-none focus:border-orange-500" />
+                          <input type="date" value={editValues.date} onChange={e => setEditValues({...editValues, date: e.target.value})} className="bg-black border border-zinc-700 rounded px-2 py-1 text-xs w-full outline-none focus:border-orange-500 [color-scheme:dark]" />
                         </td>
                         <td className="px-4 py-2">
                           <select value={editValues.category} onChange={e => setEditValues({...editValues, category: e.target.value})} className="bg-black border border-zinc-700 rounded px-2 py-1 text-xs w-full outline-none focus:border-orange-500">
@@ -274,7 +384,7 @@ const BudgetDashboard = ({ budgetProfile, transactions, addTransaction, updateTr
                           </select>
                         </td>
                         <td className="px-4 py-2">
-                          <input type="text" value={editValues.title} onChange={e => setEditValues({...editValues, title: e.target.value})} className="bg-black border border-zinc-700 rounded px-2 py-1 text-xs w-full outline-none focus:border-orange-500" />
+                          <input type="text" value={editValues.note} onChange={e => setEditValues({...editValues, note: e.target.value})} className="bg-black border border-zinc-700 rounded px-2 py-1 text-xs w-full outline-none focus:border-orange-500" />
                         </td>
                         <td className="px-4 py-2">
                           <input type="number" step="0.01" value={editValues.amount} onChange={e => setEditValues({...editValues, amount: e.target.value})} className="bg-black border border-zinc-700 rounded px-2 py-1 text-xs w-24 outline-none focus:border-orange-500" />
@@ -302,7 +412,7 @@ const BudgetDashboard = ({ budgetProfile, transactions, addTransaction, updateTr
                       <td className="px-4 py-3">
                         <span className="bg-zinc-800 px-2 py-1 rounded text-xs">{transaction.category}</span>
                       </td>
-                      <td className="px-4 py-3 text-zinc-400 truncate max-w-[200px]">{transaction.title}</td>
+                      <td className="px-4 py-3 text-zinc-400 truncate max-w-[200px]">{transaction.note}</td>
                       <td className={`px-4 py-3 font-bold ${transaction.type === 'income' ? 'text-emerald-400' : 'text-white'}`}>
                         {transaction.type === 'income' ? '+' : '-'}₹{parseFloat(transaction.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>

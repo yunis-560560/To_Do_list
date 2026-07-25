@@ -44,7 +44,7 @@ export const useBudget = (userId) => {
         const mappedTrans = transData.map(t => ({
           id: t.id,
           type: t.type, // 'income' or 'expense'
-          title: t.title,
+          note: t.note,
           amount: parseFloat(t.amount) || 0,
           category: t.category,
           date: t.transaction_date,
@@ -72,49 +72,48 @@ export const useBudget = (userId) => {
     }, { onConflict: 'user_id' });
   };
 
-  const addTransaction = async (transData) => {
-    // Generate a temporary ID for optimistic UI
-    const tempId = Math.random().toString(36).substr(2, 9);
-    const newTrans = {
-      ...transData,
-      id: tempId,
-      createdAt: new Date().toISOString()
+    const addTransaction = async (transData) => {
+      // Generate a temporary ID for optimistic UI
+      const tempId = Math.random().toString(36).substr(2, 9);
+      const newTrans = {
+        ...transData,
+        id: tempId,
+        createdAt: new Date().toISOString()
+      };
+      
+      setTransactions(prev => [newTrans, ...prev]);
+  
+      // Insert to Supabase with the correct schema
+      const { data, error } = await supabase.from('transactions').insert({
+        user_id: userId,
+        type: transData.type,
+        note: transData.note || '',
+        amount: transData.amount,
+        category: transData.category || '',
+        transaction_date: transData.date
+      }).select().single();
+  
+      if (!error && data) {
+        // Swap temp ID with real ID
+        setTransactions(current => current.map(t => t.id === tempId ? {
+          ...t,
+          id: data.id,
+          createdAt: data.created_at
+        } : t));
+        return { success: true };
+      } else {
+        console.error("Failed to add transaction:", error);
+        // Revert optimistic insert on failure
+        setTransactions(current => current.filter(t => t.id !== tempId));
+        return { success: false, error };
+      }
     };
-    
-    setTransactions(prev => [newTrans, ...prev]);
-
-    // Insert to Supabase
-    const { data, error } = await supabase.from('transactions').insert({
-      user_id: userId,
-      type: transData.type,
-      title: transData.title || '',
-      amount: transData.amount,
-      category: transData.category || '',
-      transaction_date: transData.date
-    }).select().single();
-
-    if (!error && data) {
-      // Swap temp ID with real ID
-      setTransactions(current => current.map(t => t.id === tempId ? {
-        ...t,
-        id: data.id,
-        createdAt: data.created_at
-      } : t));
-    } else {
-      console.error("Failed to add transaction:", error);
-      // Revert optimistic insert on failure
-      setTransactions(current => current.filter(t => t.id !== tempId));
-      return false;
-    }
-    
-    return true;
-  };
 
   const updateTransaction = async (id, updatedData) => {
     setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...updatedData } : t));
     
     const updatePayload = {};
-    if (updatedData.title !== undefined) updatePayload.title = updatedData.title;
+    if (updatedData.note !== undefined) updatePayload.note = updatedData.note;
     if (updatedData.amount !== undefined) updatePayload.amount = updatedData.amount;
     if (updatedData.category !== undefined) updatePayload.category = updatedData.category;
     if (updatedData.date !== undefined) updatePayload.transaction_date = updatedData.date;
