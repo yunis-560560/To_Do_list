@@ -12,7 +12,7 @@ import { useUser } from './hooks/useUser';
 
 function App() {
   const { user, loading, login, signup, updateProfile, logout, requestPasswordReset, validateResetToken, confirmPasswordReset } = useUser();
-  const { habits, habitLogs, hasUnsavedChanges, isSyncing, loading: habitsLoading, addHabit, updateHabit, deleteHabit, toggleHabitLog, saveAll, saveToday } = useHabits(user?.id);
+  const { habits, habitLogs, hasUnsavedChanges, isSyncing, loading: habitsLoading, fetchError, addHabit, updateHabit, deleteHabit, toggleHabitLog, saveAll, saveToday } = useHabits(user?.id);
   
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem('futuremind_active_tab') || 'dashboard';
@@ -46,7 +46,15 @@ function App() {
       case 'dashboard':
         return (
           <>
-            <ProgressCharts habits={habits} habitLogs={habitLogs} />
+            {fetchError && (
+              <div className="bg-red-500/10 text-red-400 p-4 rounded-xl border border-red-500/30 mb-6 flex items-center justify-between">
+                <div>
+                  <strong className="mr-2">Failed to load data:</strong> {fetchError}
+                </div>
+                <button onClick={() => window.location.reload()} className="px-4 py-1.5 bg-red-500/20 hover:bg-red-500/40 border border-red-500/50 text-white rounded-lg text-sm transition-colors">Retry</button>
+              </div>
+            )}
+            <ProgressCharts habits={habits} habitLogs={habitLogs} loading={habitsLoading} />
             <HabitTracker 
               habits={habits}
               habitLogs={habitLogs}

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Check, Plus, Settings2, MoreHorizontal, Trash2, Edit2, Smile, Flame, Loader2 } from 'lucide-react';
 import { format, getDaysInMonth, startOfMonth, addDays } from 'date-fns';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
+import { getHabitEmoji } from '../utils/emojiUtils';
 
 const calculateStreak = (habitId, habitLogs) => {
   let streak = 0;
@@ -201,7 +202,8 @@ const HabitTracker = ({ habits, habitLogs, hasUnsavedChanges, isSyncing, loading
       await onSaveAll();
       showToast("Tasks saved successfully");
     } catch (e) {
-      showToast("Couldn't save, try again", true);
+      console.error(e);
+      showToast(e.message || "Couldn't save, try again", true);
     }
   };
 
@@ -211,7 +213,8 @@ const HabitTracker = ({ habits, habitLogs, hasUnsavedChanges, isSyncing, loading
       await onSaveToday();
       showToast("Tasks saved successfully");
     } catch (e) {
-      showToast("Couldn't save, try again", true);
+      console.error(e);
+      showToast(e.message || "Couldn't save, try again", true);
     }
   };
   
@@ -223,9 +226,8 @@ const HabitTracker = ({ habits, habitLogs, hasUnsavedChanges, isSyncing, loading
   const handleAddSubmit = (e) => {
     e.preventDefault();
     if (newHabitName.trim()) {
-      const emojis = ['🚀', '⚡', '🌟', '🎯', '💪', '🔥'];
-      const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-      const success = onAdd(newHabitName, randomEmoji);
+      const habitEmoji = getHabitEmoji(newHabitName.trim());
+      const success = onAdd(newHabitName, habitEmoji);
       if (success) {
         setNewHabitName('');
       } else {

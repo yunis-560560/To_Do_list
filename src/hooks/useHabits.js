@@ -10,6 +10,7 @@ export const useHabits = (userId) => {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
 
   // We will keep an array of optimistic changes to sync
   const [pendingChanges, setPendingChanges] = useState({
@@ -27,13 +28,17 @@ export const useHabits = (userId) => {
 
     const fetchData = async () => {
       setLoading(true);
+      setFetchError(null);
       // Fetch habits
       const { data: habitsData, error: habitsError } = await supabase
         .from('habits')
         .select('*')
         .eq('user_id', userId);
         
-      if (!habitsError && habitsData) {
+      if (habitsError) {
+        console.error('Error fetching habits:', habitsError);
+        setFetchError(habitsError.message || 'Failed to fetch habits');
+      } else if (habitsData) {
         setHabits(habitsData);
       }
 
@@ -43,7 +48,10 @@ export const useHabits = (userId) => {
         .select('*')
         .eq('user_id', userId);
 
-      if (!logsError && logsData) {
+      if (logsError) {
+        console.error('Error fetching habit logs:', logsError);
+        setFetchError(logsError.message || 'Failed to fetch habit logs');
+      } else if (logsData) {
         // Transform logs back into { habitId: { dateStr: true } }
         const logsMap = {};
         logsData.forEach(log => {
@@ -86,14 +94,15 @@ export const useHabits = (userId) => {
     setPendingChanges(prev => {
       // Find if it's already a pending new habit
       const existingPending = prev.habits.find(h => h.id === id);
-      if (existingPending) {
+      if (existingPending && !existingPending._isUpdate) {
         return {
           ...prev,
           habits: prev.habits.map(h => h.id === id ? { ...h, name: newName.trim(), emoji: newEmoji } : h)
         };
       } else {
-        // It's an existing habit to update
-        const updatedHabits = [...prev.habits, { id, name: newName.trim(), emoji: newEmoji, _isUpdate: true }];
+        // It's an existing habit to update, remove previous pending update for same habit
+        const filteredHabits = prev.habits.filter(h => h.id !== id);
+        const updatedHabits = [...filteredHabits, { id, name: newName.trim(), emoji: newEmoji, _isUpdate: true }];
         return { ...prev, habits: updatedHabits };
       }
     });
@@ -109,10 +118,24 @@ export const useHabits = (userId) => {
       return newLogs;
     });
     
-    setPendingChanges(prev => ({
-      ...prev,
-      habits: [...prev.habits, { id, _isDelete: true }]
-    }));
+    setPendingChanges(prev => {
+      // If it's a temporary habit, just remove it from pending habits
+      if (id.startsWith('temp_')) {
+        return {
+          ...prev,
+          habits: prev.habits.filter(h => h.id !== id)
+        };
+      }
+      
+      // Otherwise, mark it for deletion, removing any pending updates
+      return {
+        ...prev,
+        habits: [
+          ...prev.habits.filter(h => h.id !== id),
+          { id, _isDelete: true }
+        ]
+      };
+    });
     
     markUnsaved();
   };
@@ -159,10 +182,12 @@ export const useHabits = (userId) => {
         if (h._isDelete) {
           // It's a real UUID from DB
           if (!h.id.startsWith('temp_')) {
-            await supabase.from('habits').delete().eq('id', h.id);
+            const { error } = await supabase.from('habits').delete().eq('id', h.id);
+            if (error) throw error;
           }
         } else if (h._isUpdate) {
-           await supabase.from('habits').update({ name: h.name, emoji: h.emoji }).eq('id', h.id);
+           const { error } = await supabase.from('habits').update({ name: h.name, emoji: h.emoji }).eq('id', h.id);
+           if (error) throw error;
         } else {
            // Insert new habit
            const { data, error } = await supabase.from('habits').insert({
@@ -171,7 +196,9 @@ export const useHabits = (userId) => {
              emoji: h.emoji
            }).select().single();
            
-           if (!error && data) {
+           if (error) throw error;
+           
+           if (data) {
               // We need to update any logs that were associated with 'temp_x' to the new real UUID
               const tempId = h.id;
               const realId = data.id;
@@ -204,18 +231,20 @@ export const useHabits = (userId) => {
           if (isCompleted) {
              // Insert log
              // Using upsert or handling duplicates
-             await supabase.from('habit_logs').upsert({
+             const { error } = await supabase.from('habit_logs').upsert({
                 habit_id: habitId,
                 user_id: userId,
                 log_date: dateStr
              }, { onConflict: 'habit_id,log_date' });
+             if (error) throw error;
           } else {
              // Delete log
-             await supabase.from('habit_logs')
+             const { error } = await supabase.from('habit_logs')
                .delete()
                .eq('habit_id', habitId)
                .eq('user_id', userId)
                .eq('log_date', dateStr);
+             if (error) throw error;
           }
         }
       }
@@ -243,6 +272,7 @@ export const useHabits = (userId) => {
     hasUnsavedChanges,
     isSyncing,
     loading,
+    fetchError,
     addHabit,
     updateHabit,
     deleteHabit,

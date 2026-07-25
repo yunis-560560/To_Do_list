@@ -3,7 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pi
 import { Target, Trophy } from 'lucide-react';
 import { getDaysInMonth, startOfMonth, addDays, getWeek } from 'date-fns';
 
-const ProgressCharts = ({ habits = [], habitLogs = {} }) => {
+const ProgressCharts = ({ habits = [], habitLogs = {}, loading = false }) => {
   const currentDate = new Date();
   const daysInMonth = getDaysInMonth(currentDate);
   const days = Array.from({ length: daysInMonth }, (_, i) => addDays(startOfMonth(currentDate), i));
@@ -62,6 +62,19 @@ const ProgressCharts = ({ habits = [], habitLogs = {} }) => {
     { name: 'Completed', value: goalPercentage, color: '#f97316' }, // orange-500
     { name: 'Remaining', value: Math.max(100 - goalPercentage, 0), color: '#27272a' } // zinc-800
   ];
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="bg-zinc-900 rounded-xl p-4 shadow-xl border border-zinc-800 h-56 flex flex-col justify-center items-center animate-pulse">
+            <div className="w-1/3 h-4 bg-zinc-800 rounded mb-auto self-start mt-2"></div>
+            <div className="w-16 h-16 rounded-full border-4 border-zinc-800/50 mb-8 border-t-orange-500/20 animate-spin"></div>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">

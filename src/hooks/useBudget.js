@@ -69,7 +69,7 @@ export const useBudget = (userId) => {
       monthly_income: profileData.monthlyIncome,
       monthly_budget_goal: profileData.monthlyBudgetGoal,
       updated_at: new Date().toISOString()
-    });
+    }, { onConflict: 'user_id' });
   };
 
   const addTransaction = async (transData) => {
