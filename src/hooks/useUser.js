@@ -25,7 +25,7 @@ export const useUser = () => {
       email,
       password,
     });
-    
+
     if (error) {
       return { success: false, error: error.message };
     }
@@ -58,10 +58,10 @@ export const useUser = () => {
 
   const updateProfile = async (updatedData) => {
     const updatePayload = { data: {} };
-    
+
     // Iterate over possible fields to update
     const fieldsToUpdate = ['name', 'gender', 'age', 'weight', 'weightUnit', 'height', 'heightUnit', 'profile_image'];
-    
+
     fieldsToUpdate.forEach(field => {
       if (updatedData[field] !== undefined) {
         updatePayload.data[field] = updatedData[field];
@@ -76,18 +76,18 @@ export const useUser = () => {
     if (updatedData.password) {
       updatePayload.password = updatedData.password;
     }
-    
+
     const { data, error } = await supabase.auth.updateUser(updatePayload);
-    
+
     if (error) {
       console.error("Update error:", error);
       return { success: false, error: error.message };
     }
-    
+
     if (data?.user) {
       setUser(data.user);
     }
-    
+
     return { success: true };
   };
 
@@ -99,7 +99,7 @@ export const useUser = () => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/`,
     });
-    
+
     if (error) {
       console.error("Password reset error:", error);
       return { success: false, error: error.message };
@@ -114,7 +114,7 @@ export const useUser = () => {
   // So we just mock validateResetToken as always true if they are logged in or if there is a hash, 
   // but for simplicity, let's just use the standard Supabase flow:
   // When they come back with the recovery link, they are logged in, and can just call updateProfile with new password.
-  
+
   const validateResetToken = (token) => {
     // In Supabase, tokens are processed by the client library automatically via the URL hash.
     // If they have a session, we can let them reset.
@@ -132,8 +132,8 @@ export const useUser = () => {
   };
 
   return {
-    user: user ? { 
-      email: user.email, 
+    user: user ? {
+      email: user.email,
       name: user.user_metadata?.name || 'User',
       gender: user.user_metadata?.gender || 'Male',
       age: user.user_metadata?.age || '',
@@ -142,7 +142,7 @@ export const useUser = () => {
       height: user.user_metadata?.height || '',
       heightUnit: user.user_metadata?.heightUnit || 'cm',
       profile_image: user.user_metadata?.profile_image || null,
-      id: user.id 
+      id: user.id
     } : null,
     loading,
     login,
