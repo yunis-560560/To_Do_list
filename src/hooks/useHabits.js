@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../supabase';
-import { format } from 'date-fns';
+import { db } from '../firebase';
+import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
 
 const generateId = () => Math.random().toString(36).substr(2, 9); // For optimistic UI
 
@@ -12,7 +12,6 @@ export const useHabits = (userId) => {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(null);
 
-  // We will keep an array of optimistic changes to sync
   const [pendingChanges, setPendingChanges] = useState({
     habits: [],
     logs: {}
@@ -29,38 +28,30 @@ export const useHabits = (userId) => {
     const fetchData = async () => {
       setLoading(true);
       setFetchError(null);
-      // Fetch habits
-      const { data: habitsData, error: habitsError } = await supabase
-        .from('habits')
-        .select('*')
-        .eq('user_id', userId);
-        
-      if (habitsError) {
-        console.error('Error fetching habits:', habitsError);
-        setFetchError(habitsError.message || 'Failed to fetch habits');
-      } else if (habitsData) {
+      try {
+        // Fetch habits
+        const habitsQuery = query(collection(db, 'habits'), where('user_id', '==', userId));
+        const habitsSnap = await getDocs(habitsQuery);
+        const habitsData = habitsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setHabits(habitsData);
-      }
 
-      // Fetch logs
-      const { data: logsData, error: logsError } = await supabase
-        .from('habit_logs')
-        .select('*')
-        .eq('user_id', userId);
-
-      if (logsError) {
-        console.error('Error fetching habit logs:', logsError);
-        setFetchError(logsError.message || 'Failed to fetch habit logs');
-      } else if (logsData) {
-        // Transform logs back into { habitId: { dateStr: true } }
+        // Fetch logs
+        const logsQuery = query(collection(db, 'habit_logs'), where('user_id', '==', userId));
+        const logsSnap = await getDocs(logsQuery);
+        
         const logsMap = {};
-        logsData.forEach(log => {
+        logsSnap.forEach(docSnap => {
+          const log = docSnap.data();
           if (!logsMap[log.habit_id]) logsMap[log.habit_id] = {};
           logsMap[log.habit_id][log.log_date] = true;
         });
         setHabitLogs(logsMap);
+      } catch (err) {
+        console.error('Error fetching habits data:', err);
+        setFetchError(err.message || 'Failed to fetch habits');
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
     
     fetchData();
@@ -73,8 +64,6 @@ export const useHabits = (userId) => {
     if (habits.some(h => h.name.toLowerCase() === name.toLowerCase())) return false;
     
     const newHabit = { 
-      // Supabase expects UUIDs, so let it auto-generate, but we need an ID for optimistic UI.
-      // We will let Supabase handle the ID when saving, but we need a temporary one for React keys.
       id: `temp_${generateId()}`, 
       name: name.trim(), 
       emoji,
@@ -92,7 +81,6 @@ export const useHabits = (userId) => {
     setHabits(prev => prev.map(h => h.id === id ? { ...h, name: newName.trim(), emoji: newEmoji } : h));
     
     setPendingChanges(prev => {
-      // Find if it's already a pending new habit
       const existingPending = prev.habits.find(h => h.id === id);
       if (existingPending && !existingPending._isUpdate) {
         return {
@@ -100,7 +88,6 @@ export const useHabits = (userId) => {
           habits: prev.habits.map(h => h.id === id ? { ...h, name: newName.trim(), emoji: newEmoji } : h)
         };
       } else {
-        // It's an existing habit to update, remove previous pending update for same habit
         const filteredHabits = prev.habits.filter(h => h.id !== id);
         const updatedHabits = [...filteredHabits, { id, name: newName.trim(), emoji: newEmoji, _isUpdate: true }];
         return { ...prev, habits: updatedHabits };
@@ -119,7 +106,6 @@ export const useHabits = (userId) => {
     });
     
     setPendingChanges(prev => {
-      // If it's a temporary habit, just remove it from pending habits
       if (id.startsWith('temp_')) {
         return {
           ...prev,
@@ -127,7 +113,6 @@ export const useHabits = (userId) => {
         };
       }
       
-      // Otherwise, mark it for deletion, removing any pending updates
       return {
         ...prev,
         habits: [
@@ -162,8 +147,6 @@ export const useHabits = (userId) => {
       const logs = { ...prev.logs };
       if (!logs[habitId]) logs[habitId] = {};
       
-      // If we are toggling, we record what it SHOULD be now based on state (which we just updated optimistically)
-      // Since state update is async, we can compute it here.
       const isCurrentlyCompleted = !!(habitLogs[habitId] && habitLogs[habitId][dateString]);
       logs[habitId][dateString] = !isCurrentlyCompleted;
       
@@ -180,81 +163,67 @@ export const useHabits = (userId) => {
       // 1. Process Habits
       for (const h of pendingChanges.habits) {
         if (h._isDelete) {
-          // It's a real UUID from DB
           if (!h.id.startsWith('temp_')) {
-            const { error } = await supabase.from('habits').delete().eq('id', h.id);
-            if (error) throw error;
+            await deleteDoc(doc(db, 'habits', h.id));
           }
         } else if (h._isUpdate) {
-           const { error } = await supabase.from('habits').update({ name: h.name, emoji: h.emoji }).eq('id', h.id);
-           if (error) throw error;
+           await updateDoc(doc(db, 'habits', h.id), { name: h.name, emoji: h.emoji });
         } else {
            // Insert new habit
-           const { data, error } = await supabase.from('habits').insert({
+           const docRef = await addDoc(collection(db, 'habits'), {
              user_id: userId,
              name: h.name,
              emoji: h.emoji
-           }).select().single();
+           });
            
-           if (error) throw error;
+           const tempId = h.id;
+           const realId = docRef.id;
            
-           if (data) {
-              // We need to update any logs that were associated with 'temp_x' to the new real UUID
-              const tempId = h.id;
-              const realId = data.id;
-              
-              setHabits(current => current.map(ch => ch.id === tempId ? data : ch));
-              
-              // Map pending logs to the real ID
-              if (pendingChanges.logs[tempId]) {
-                 pendingChanges.logs[realId] = pendingChanges.logs[tempId];
-                 delete pendingChanges.logs[tempId];
-              }
-              
-              setHabitLogs(current => {
-                 const newLogs = { ...current };
-                 if (newLogs[tempId]) {
-                    newLogs[realId] = newLogs[tempId];
-                    delete newLogs[tempId];
-                 }
-                 return newLogs;
-              });
+           setHabits(current => current.map(ch => ch.id === tempId ? { ...ch, id: realId } : ch));
+           
+           if (pendingChanges.logs[tempId]) {
+              pendingChanges.logs[realId] = pendingChanges.logs[tempId];
+              delete pendingChanges.logs[tempId];
            }
+           
+           setHabitLogs(current => {
+              const newLogs = { ...current };
+              if (newLogs[tempId]) {
+                 newLogs[realId] = newLogs[tempId];
+                 delete newLogs[tempId];
+              }
+              return newLogs;
+           });
         }
       }
 
       // 2. Process Logs
       for (const [habitId, dates] of Object.entries(pendingChanges.logs)) {
-        if (habitId.startsWith('temp_')) continue; // Should have been remapped above
+        if (habitId.startsWith('temp_')) continue; 
         
         for (const [dateStr, isCompleted] of Object.entries(dates)) {
+          // In Firestore, we use a composite ID for habit logs to ensure uniqueness and easy upsert/delete
+          const logDocId = `${userId}_${habitId}_${dateStr}`;
+          const logDocRef = doc(db, 'habit_logs', logDocId);
+
           if (isCompleted) {
-             // Insert log
-             // Using upsert or handling duplicates
-             const { error } = await supabase.from('habit_logs').upsert({
+             await setDoc(logDocRef, {
                 habit_id: habitId,
                 user_id: userId,
                 log_date: dateStr
-             }, { onConflict: 'habit_id,log_date' });
-             if (error) throw error;
+             });
           } else {
-             // Delete log
-             const { error } = await supabase.from('habit_logs')
-               .delete()
-               .eq('habit_id', habitId)
-               .eq('user_id', userId)
-               .eq('log_date', dateStr);
-             if (error) throw error;
+             await deleteDoc(logDocRef);
           }
         }
       }
 
       setHasUnsavedChanges(false);
       setPendingChanges({ habits: [], logs: {} });
-      console.log("Supabase write SUCCESS (All)");
+      console.log("Firebase write SUCCESS (All)");
       return true;
     } catch (e) {
-      console.error("Supabase write FAILED (All):", e);
+      console.error("Firebase write FAILED (All):", e);
       throw e;
     } finally {
       setIsSyncing(false);
@@ -262,7 +231,6 @@ export const useHabits = (userId) => {
   };
 
   const saveToday = async () => {
-    // For simplicity, we just save all pending changes as it handles the logic
     return saveAll();
   };
 

@@ -1,10 +1,43 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Trash2, Edit2, Save, X, AlertTriangle, Info, TrendingUp, TrendingDown, ArrowRight, ArrowUpRight, ArrowDownRight, RotateCcw, Eraser, Loader2, CheckCircle2 } from 'lucide-react';
 import { PieChart, Pie, Cell, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { format, startOfMonth, endOfMonth, isWithinInterval, differenceInDays, getDate } from 'date-fns';
 
 const EXPENSE_CATEGORIES = ['Food', 'Transport', 'Bills', 'Shopping', 'Entertainment', 'Education', 'Other'];
 const INCOME_CATEGORIES = ['Salary', 'Business', 'Investment', 'Gift', 'Other'];
+
+const AnimatedNumber = ({ value, isCurrency = true }) => {
+  const [displayValue, setDisplayValue] = useState(value);
+
+  useEffect(() => {
+    let startTimestamp = null;
+    const duration = 500; // ms
+    const startValue = displayValue;
+    const endValue = value;
+    
+    if (startValue === endValue) return;
+
+    const step = (timestamp) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      
+      const currentVal = startValue + progress * (endValue - startValue);
+      setDisplayValue(currentVal);
+      
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      } else {
+        setDisplayValue(endValue);
+      }
+    };
+    
+    window.requestAnimationFrame(step);
+  }, [value, displayValue]);
+
+  return (
+    <>{displayValue.toLocaleString(undefined, isCurrency ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : { maximumFractionDigits: 0 })}</>
+  );
+};
 
 const BudgetDashboard = ({ budgetProfile, transactions, addTransaction, updateTransaction, deleteTransaction, onGoToSetup, onClearAllData, onClearMonthData, onSaveNow, saveStatus }) => {
 
@@ -63,18 +96,20 @@ const BudgetDashboard = ({ budgetProfile, transactions, addTransaction, updateTr
   const goal = budgetProfile.monthlyBudgetGoal;
   const remainingBudget = goal - totalSpentThisMonth;
   const currentBalance = totalIncomeThisMonth - totalSpentThisMonth;
-  const daysLeftInMonth = differenceInDays(currentMonthEnd, today);
+  const daysLeftInMonth = getDate(currentMonthEnd) - getDate(today) + 1;
   const daysElapsed = getDate(today);
+  const totalDaysInMonth = getDate(currentMonthEnd);
 
   const recommendedDaily = daysLeftInMonth > 0 ? (remainingBudget / daysLeftInMonth) : 0;
+  const targetDailyAverage = totalDaysInMonth > 0 ? (goal / totalDaysInMonth) : 0;
   const actualAverage = daysElapsed > 0 ? (totalSpentThisMonth / daysElapsed) : 0;
 
   // Chart Data Calculations
   const spendPercentage = goal > 0 ? Math.min(Math.round((totalSpentThisMonth / goal) * 100), 100) : 0;
   const getGaugeColor = (pct) => {
-    if (pct >= 90) return '#ef4444'; // Red
-    if (pct >= 75) return '#f59e0b'; // Yellow
-    return '#10b981'; // Emerald/Green
+    if (remainingBudget < 0) return '#ef4444'; // Red if exceeded
+    if (pct >= 80) return '#f97316'; // Orange if near limit
+    return '#10b981'; // Emerald/Green otherwise
   };
   const gaugeColor = getGaugeColor(spendPercentage);
   const gaugeData = [
@@ -293,29 +328,67 @@ const BudgetDashboard = ({ budgetProfile, transactions, addTransaction, updateTr
         </div>
       </div>
 
-      {/* CALLOUT BOX: Average Spend Per Day */}
-      <div className={`border-l-4 rounded-r-xl p-4 ${remainingBudget < 0 ? 'border-red-500 bg-red-500/10' : 'border-orange-500 bg-orange-500/10'}`}>
-        <div className="flex items-start gap-3">
-          {remainingBudget < 0 ? <AlertTriangle className="text-red-500 shrink-0 mt-1" /> : <Info className="text-orange-500 shrink-0 mt-1" />}
-          <div>
-            <h3 className={`font-bold text-lg mb-1 ${remainingBudget < 0 ? 'text-red-400' : 'text-orange-500'}`}>
-              {remainingBudget < 0 ? "You've exceeded your spending goal!" : "Recommended Daily Spend"}
-            </h3>
-            {daysLeftInMonth === 0 ? (
-               <p className="text-sm text-zinc-300">
-                 Month review: You finished the month {remainingBudget < 0 ? 'over' : 'under'} budget by ₹{Math.abs(remainingBudget).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.
-               </p>
-            ) : remainingBudget < 0 ? (
-              <p className="text-sm text-zinc-300">
-                You are over your monthly goal by ₹{Math.abs(remainingBudget).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Try to minimize spending for the rest of the month.
-              </p>
-            ) : (
-              <p className="text-sm text-zinc-300">
-                To stay within your ₹{goal.toLocaleString()} goal, spend no more than <span className="font-bold text-white text-base">₹{recommendedDaily.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> per day for the remaining {daysLeftInMonth} days.
-              </p>
-            )}
+      {/* CALLOUT BOX: Smart Daily Recommendation */}
+      <div className={`border rounded-xl p-5 mb-6 transition-colors duration-500 ${
+        remainingBudget < 0 ? 'bg-red-950/20 border-red-500/50' : 
+        (actualAverage > targetDailyAverage ? 'bg-orange-950/20 border-orange-500/50' : 'bg-emerald-950/10 border-emerald-500/30')
+      }`}>
+        {remainingBudget < 0 ? (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-2 text-red-500">
+              <AlertTriangle size={24} />
+              <h3 className="font-bold text-xl">Budget Exceeded</h3>
+            </div>
+            <p className="text-zinc-300">
+              You have exceeded your monthly goal by <span className="font-bold text-red-400">₹{Math.abs(remainingBudget).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>. Avoid further spending or increase your monthly budget.
+            </p>
+            <div className="mt-2 p-4 bg-red-500/10 rounded-lg border border-red-500/20 text-center">
+              <p className="text-sm text-red-400 font-bold uppercase tracking-wider mb-1">Recommended Daily Spend</p>
+              <p className="text-3xl font-bold text-red-500">₹0/day</p>
+            </div>
           </div>
-        </div>
+        ) : daysLeftInMonth <= 0 ? (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2 text-emerald-500">
+              <CheckCircle2 size={24} />
+              <h3 className="font-bold text-xl">Month Complete</h3>
+            </div>
+            <p className="text-zinc-300">
+              You finished the month <span className="font-bold text-emerald-400">under budget</span> by ₹{remainingBudget.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-2">
+              <Info className={actualAverage > targetDailyAverage ? 'text-orange-500' : 'text-emerald-500'} size={24} />
+              <h3 className={`font-bold text-xl ${actualAverage > targetDailyAverage ? 'text-orange-500' : 'text-emerald-500'}`}>
+                Recommended Daily Spend
+              </h3>
+            </div>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <div className="bg-black/40 rounded-lg p-3 border border-white/5">
+                <p className="text-xs text-zinc-400 font-bold uppercase tracking-wider mb-1">Remaining Budget</p>
+                <p className="text-lg font-bold text-white">₹<AnimatedNumber value={remainingBudget} /></p>
+              </div>
+              <div className="bg-black/40 rounded-lg p-3 border border-white/5">
+                <p className="text-xs text-zinc-400 font-bold uppercase tracking-wider mb-1">Remaining Days</p>
+                <p className="text-lg font-bold text-white"><AnimatedNumber value={daysLeftInMonth} isCurrency={false} /> {daysLeftInMonth === 1 ? 'day' : 'days'}</p>
+              </div>
+              <div className={`col-span-2 sm:col-span-1 rounded-lg p-3 border ${actualAverage > targetDailyAverage ? 'bg-orange-500/10 border-orange-500/30' : 'bg-emerald-500/10 border-emerald-500/30'}`}>
+                <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${actualAverage > targetDailyAverage ? 'text-orange-400' : 'text-emerald-400'}`}>Recommended Limit</p>
+                <p className={`text-2xl font-bold ${actualAverage > targetDailyAverage ? 'text-orange-500' : 'text-emerald-500'}`}>
+                  ₹<AnimatedNumber value={recommendedDaily} />
+                  <span className="text-sm font-normal text-zinc-400">/day</span>
+                </p>
+              </div>
+            </div>
+
+            <p className="text-sm text-zinc-300 mt-2">
+              Spend up to <span className="font-bold text-white">₹{recommendedDaily.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> each day to stay within your monthly goal.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* CHARTS SECTION */}

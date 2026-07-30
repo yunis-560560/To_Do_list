@@ -1,149 +1,171 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../supabase';
+import { auth, db } from '../firebase';
+import { 
+  onAuthStateChanged, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut, 
+  sendPasswordResetEmail,
+  verifyPasswordResetCode,
+  confirmPasswordReset as firebaseConfirmPasswordReset,
+  updatePassword
+} from 'firebase/auth';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 
 export const useUser = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // Fetch custom profile data from Firestore
+        try {
+          const docRef = doc(db, 'users', firebaseUser.uid);
+          const docSnap = await getDoc(docRef);
+          
+          if (docSnap.exists()) {
+            const userData = docSnap.data();
+            setUser({
+              id: firebaseUser.uid,
+              email: firebaseUser.email,
+              name: userData.name || 'User',
+              gender: userData.gender || 'Male',
+              age: userData.age || '',
+              weight: userData.weight || '',
+              weightUnit: userData.weightUnit || 'kg',
+              height: userData.height || '',
+              heightUnit: userData.heightUnit || 'cm',
+              profile_image: userData.profile_image || null,
+            });
+          } else {
+            // Fallback if no profile doc exists
+            setUser({
+              id: firebaseUser.uid,
+              email: firebaseUser.email,
+              name: 'User'
+            });
+          }
+        } catch (error) {
+          console.error("Error fetching user profile:", error);
+          setUser({ id: firebaseUser.uid, email: firebaseUser.email, name: 'User' });
+        }
+      } else {
+        setUser(null);
+      }
       setLoading(false);
     });
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
+    return () => unsubscribe();
   }, []);
 
   const login = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      return { success: true };
+    } catch (error) {
       return { success: false, error: error.message };
     }
-    return { success: true };
   };
 
   const signup = async (userData) => {
-    const { data, error } = await supabase.auth.signUp({
-      email: userData.email,
-      password: userData.password,
-      options: {
-        data: {
-          name: userData.name,
-          gender: userData.gender || 'Male',
-          age: userData.age || null,
-          weight: userData.weight || null,
-          weightUnit: userData.weightUnit || 'kg',
-          height: userData.height || null,
-          heightUnit: userData.heightUnit || 'cm',
-          profile_image: userData.profile_image || null
-        }
-      }
-    });
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, userData.email, userData.password);
+      const firebaseUser = userCredential.user;
 
-    if (error) {
+      // Save custom fields to Firestore
+      await setDoc(doc(db, 'users', firebaseUser.uid), {
+        name: userData.name,
+        gender: userData.gender || 'Male',
+        age: userData.age || null,
+        weight: userData.weight || null,
+        weightUnit: userData.weightUnit || 'kg',
+        height: userData.height || null,
+        heightUnit: userData.heightUnit || 'cm',
+        profile_image: userData.profile_image || null
+      });
+
+      return { success: true };
+    } catch (error) {
       return { success: false, error: error.message };
     }
-    return { success: true };
   };
 
   const updateProfile = async (updatedData) => {
-    const updatePayload = { data: {} };
+    if (!auth.currentUser) return { success: false, error: "Not logged in" };
+    
+    try {
+      const updatePayload = {};
+      const fieldsToUpdate = ['name', 'gender', 'age', 'weight', 'weightUnit', 'height', 'heightUnit', 'profile_image'];
 
-    // Iterate over possible fields to update
-    const fieldsToUpdate = ['name', 'gender', 'age', 'weight', 'weightUnit', 'height', 'heightUnit', 'profile_image'];
+      fieldsToUpdate.forEach(field => {
+        if (updatedData[field] !== undefined) {
+          updatePayload[field] = updatedData[field];
+        }
+      });
 
-    fieldsToUpdate.forEach(field => {
-      if (updatedData[field] !== undefined) {
-        updatePayload.data[field] = updatedData[field];
+      if (Object.keys(updatePayload).length > 0) {
+        await updateDoc(doc(db, 'users', auth.currentUser.uid), updatePayload);
+        
+        // Update local state
+        setUser(prev => ({ ...prev, ...updatePayload }));
       }
-    });
 
-    // If no metadata fields were updated, remove the empty data object
-    if (Object.keys(updatePayload.data).length === 0) {
-      delete updatePayload.data;
-    }
+      if (updatedData.password) {
+        await updatePassword(auth.currentUser, updatedData.password);
+      }
 
-    if (updatedData.password) {
-      updatePayload.password = updatedData.password;
-    }
-
-    const { data, error } = await supabase.auth.updateUser(updatePayload);
-
-    if (error) {
+      return { success: true };
+    } catch (error) {
       console.error("Update error:", error);
       return { success: false, error: error.message };
     }
-
-    if (data?.user) {
-      setUser(data.user);
-    }
-
-    return { success: true };
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
+    await signOut(auth);
   };
 
   const requestPasswordReset = async (email) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/`,
-    });
-
-    if (error) {
+    try {
+      await sendPasswordResetEmail(auth, email);
+      return { success: true };
+    } catch (error) {
       console.error("Password reset error:", error);
       return { success: false, error: error.message };
     }
-    return { success: true };
   };
 
-  // With Supabase, the user is redirected back to the site with a hash containing the access token.
-  // The session is automatically established by onAuthStateChange.
-  // For the custom UI you had (validateResetToken, confirmPasswordReset), 
-  // Supabase handles the token validation implicitly when they return via the link.
-  // So we just mock validateResetToken as always true if they are logged in or if there is a hash, 
-  // but for simplicity, let's just use the standard Supabase flow:
-  // When they come back with the recovery link, they are logged in, and can just call updateProfile with new password.
-
-  const validateResetToken = (token) => {
-    // In Supabase, tokens are processed by the client library automatically via the URL hash.
-    // If they have a session, we can let them reset.
-    return true;
+  const validateResetToken = async (token) => {
+    try {
+      if (token) {
+        await verifyPasswordResetCode(auth, token);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      return false;
+    }
   };
 
   const confirmPasswordReset = async (token, newPassword) => {
-    // With Supabase, after clicking the reset link, they are signed in and can update their password.
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) {
+    try {
+      if (token) {
+        await firebaseConfirmPasswordReset(auth, token, newPassword);
+      } else if (auth.currentUser) {
+        await updatePassword(auth.currentUser, newPassword);
+      } else {
+        return false;
+      }
+      return true;
+    } catch (error) {
       console.error(error);
       return false;
     }
-    return true;
   };
 
   return {
-    user: user ? {
-      email: user.email,
-      name: user.user_metadata?.name || 'User',
-      gender: user.user_metadata?.gender || 'Male',
-      age: user.user_metadata?.age || '',
-      weight: user.user_metadata?.weight || '',
-      weightUnit: user.user_metadata?.weightUnit || 'kg',
-      height: user.user_metadata?.height || '',
-      heightUnit: user.user_metadata?.heightUnit || 'cm',
-      profile_image: user.user_metadata?.profile_image || null,
-      id: user.id
-    } : null,
+    user,
     loading,
     login,
     signup,

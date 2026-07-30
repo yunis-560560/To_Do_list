@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../supabase';
+import { db } from '../firebase';
+import { collection, query, where, getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc, setDoc, orderBy } from 'firebase/firestore';
 
 export const useBudget = (userId) => {
   const [budgetProfile, setBudgetProfile] = useState(null);
@@ -16,109 +17,102 @@ export const useBudget = (userId) => {
 
     const fetchData = async () => {
       setLoading(true);
+      try {
+        // Fetch budget settings
+        const settingsRef = doc(db, 'budget_settings', userId);
+        const settingsSnap = await getDoc(settingsRef);
 
-      // ─── Fetch budget settings ───────────────────────────────────────────────
-      // Table: budget_settings | Columns: user_id, category, monthly_goal, updated_at
-      const { data: settingsData, error: settingsError } = await supabase
-        .from('budget_settings')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle(); // safe: returns null (not error) when no row exists
+        if (settingsSnap.exists()) {
+          const settingsData = settingsSnap.data();
+          setBudgetProfile({
+            userType:         settingsData.category,
+            monthlyIncome:    parseFloat(settingsData.monthly_income) || 0,
+            monthlyBudgetGoal: parseFloat(settingsData.monthly_goal) || 0,
+          });
+        } else {
+          setBudgetProfile(null);
+        }
 
-      if (!settingsError && settingsData) {
-        setBudgetProfile({
-          userType:         settingsData.category,
-          monthlyIncome:    parseFloat(settingsData.monthly_income) || 0,  // kept for UI compatibility
-          monthlyBudgetGoal: parseFloat(settingsData.monthly_goal) || 0,
+        // Fetch transactions
+        const transQuery = query(
+          collection(db, 'transactions'), 
+          where('user_id', '==', userId),
+          // Note: Firestore requires an index for ordering with a where clause.
+          // For simplicity without requiring complex indexing on initial setup, we sort in memory:
+        );
+        
+        const transSnap = await getDocs(transQuery);
+        let mappedTrans = transSnap.docs.map(doc => {
+          const t = doc.data();
+          return {
+            id:        doc.id,
+            type:      t.type,
+            note:      t.note,
+            amount:    parseFloat(t.amount) || 0,
+            category:  t.category,
+            date:      t.transaction_date,
+            createdAt: t.created_at,
+          };
         });
-      } else {
-        if (settingsError) console.warn('[useBudget] settings fetch error:', settingsError.message);
-        setBudgetProfile(null);
-      }
 
-      // ─── Fetch all transactions ───────────────────────────────────────────────
-      const { data: transData, error: transError } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('user_id', userId)
-        .order('transaction_date', { ascending: false });
-
-      if (!transError && transData) {
-        const mappedTrans = transData.map(t => ({
-          id:        t.id,
-          type:      t.type,
-          note:      t.note,
-          amount:    parseFloat(t.amount) || 0,
-          category:  t.category,
-          date:      t.transaction_date,
-          createdAt: t.created_at,
-        }));
+        // Sort by date descending
+        mappedTrans.sort((a, b) => new Date(b.date) - new Date(a.date));
         setTransactions(mappedTrans);
-      }
 
-      setLoading(false);
+      } catch (error) {
+        console.error('[useBudget] fetch error:', error.message);
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchData();
   }, [userId]);
 
-  // ─── Save / Update budget profile ──────────────────────────────────────────
-  // Maps JS camelCase → actual DB column names in budget_settings
   const saveBudgetProfile = async (profileData) => {
-    // Optimistic update — UI reflects change immediately
     setBudgetProfile(profileData);
 
-    const { error } = await supabase
-      .from('budget_settings')
-      .upsert(
-        {
-          user_id:     userId,
-          category:    profileData.userType,
-          monthly_goal: profileData.monthlyBudgetGoal,
-          updated_at:  new Date().toISOString(),
-        },
-        { onConflict: 'user_id' }
-      );
-
-    if (error) {
+    try {
+      await setDoc(doc(db, 'budget_settings', userId), {
+        user_id:     userId,
+        category:    profileData.userType,
+        monthly_goal: profileData.monthlyBudgetGoal,
+        updated_at:  new Date().toISOString(),
+      }, { merge: true });
+    } catch (error) {
       console.error('[useBudget] saveBudgetProfile error:', error.message);
-      throw error; // let useAutoSave handle retries
+      throw error; 
     }
   };
 
-  // ─── Add transaction ────────────────────────────────────────────────────────
   const addTransaction = async (transData) => {
     const tempId = Math.random().toString(36).substr(2, 9);
     const newTrans = { ...transData, id: tempId, createdAt: new Date().toISOString() };
 
-    setTransactions(prev => [newTrans, ...prev]);
+    setTransactions(prev => [newTrans, ...prev].sort((a, b) => new Date(b.date) - new Date(a.date)));
 
-    const { data, error } = await supabase
-      .from('transactions')
-      .insert({
+    try {
+      const docRef = await addDoc(collection(db, 'transactions'), {
         user_id:          userId,
         type:             transData.type,
         note:             transData.note || '',
         amount:           transData.amount,
         category:         transData.category || '',
         transaction_date: transData.date,
-      })
-      .select()
-      .single();
+        created_at:       new Date().toISOString()
+      });
 
-    if (!error && data) {
       setTransactions(current =>
-        current.map(t => t.id === tempId ? { ...t, id: data.id, createdAt: data.created_at } : t)
+        current.map(t => t.id === tempId ? { ...t, id: docRef.id } : t)
       );
       return { success: true };
-    } else {
+    } catch (error) {
       console.error('[useBudget] addTransaction error:', error);
       setTransactions(current => current.filter(t => t.id !== tempId));
       return { success: false, error };
     }
   };
 
-  // ─── Update transaction ─────────────────────────────────────────────────────
   const updateTransaction = async (id, updatedData) => {
     setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...updatedData } : t));
 
@@ -129,45 +123,63 @@ export const useBudget = (userId) => {
     if (updatedData.date     !== undefined) updatePayload.transaction_date = updatedData.date;
     if (updatedData.type     !== undefined) updatePayload.type             = updatedData.type;
 
-    await supabase.from('transactions').update(updatePayload).eq('id', id).eq('user_id', userId);
+    try {
+      await updateDoc(doc(db, 'transactions', id), updatePayload);
+    } catch (error) {
+      console.error('[useBudget] updateTransaction error:', error);
+    }
   };
 
-  // ─── Delete transaction ─────────────────────────────────────────────────────
   const deleteTransaction = async (id) => {
     setTransactions(prev => prev.filter(t => t.id !== id));
-    await supabase.from('transactions').delete().eq('id', id).eq('user_id', userId);
+    try {
+      await deleteDoc(doc(db, 'transactions', id));
+    } catch (error) {
+      console.error('[useBudget] deleteTransaction error:', error);
+    }
   };
 
-  // ─── Clear ALL budget data ──────────────────────────────────────────────────
   const clearAllBudgetData = async () => {
-    await supabase.from('transactions').delete().eq('user_id', userId);
-    await supabase.from('budget_settings').delete().eq('user_id', userId);
     setTransactions([]);
     setBudgetProfile(null);
+    
+    try {
+      await deleteDoc(doc(db, 'budget_settings', userId));
+      
+      const transQuery = query(collection(db, 'transactions'), where('user_id', '==', userId));
+      const transSnap = await getDocs(transQuery);
+      
+      const deletePromises = transSnap.docs.map(d => deleteDoc(d.ref));
+      await Promise.all(deletePromises);
+    } catch (error) {
+      console.error('[useBudget] clearAllBudgetData error:', error);
+    }
   };
 
-  // ─── Clear only current month's data ───────────────────────────────────────
   const clearCurrentMonthData = async () => {
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-      .toISOString().split('T')[0];
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-      .toISOString().split('T')[0];
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 
-    await supabase
-      .from('transactions')
-      .delete()
-      .eq('user_id', userId)
-      .gte('transaction_date', startOfMonth)
-      .lte('transaction_date', endOfMonth);
-
-    // Also remove the settings row so user re-selects their category
-    await supabase.from('budget_settings').delete().eq('user_id', userId);
-
-    setTransactions(prev =>
-      prev.filter(t => t.date < startOfMonth || t.date > endOfMonth)
-    );
+    setTransactions(prev => prev.filter(t => t.date < startOfMonth || t.date > endOfMonth));
     setBudgetProfile(null);
+
+    try {
+      await deleteDoc(doc(db, 'budget_settings', userId));
+      
+      const transQuery = query(
+        collection(db, 'transactions'), 
+        where('user_id', '==', userId),
+        where('transaction_date', '>=', startOfMonth),
+        where('transaction_date', '<=', endOfMonth)
+      );
+      const transSnap = await getDocs(transQuery);
+      
+      const deletePromises = transSnap.docs.map(d => deleteDoc(d.ref));
+      await Promise.all(deletePromises);
+    } catch (error) {
+      console.error('[useBudget] clearCurrentMonthData error:', error);
+    }
   };
 
   return {

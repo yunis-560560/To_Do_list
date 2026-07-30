@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { UserCircle, Settings, LogOut, LayoutDashboard, Wallet, BarChart3, User, Menu, X } from 'lucide-react';
+import { UserCircle, Settings, LogOut, LayoutDashboard, Wallet, BarChart3, User, Menu, X, Database } from 'lucide-react';
 
 const Navbar = ({ activeTab, onTabChange, user, onLogout }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -20,7 +20,8 @@ const Navbar = ({ activeTab, onTabChange, user, onLogout }) => {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'budget', label: 'Budget', icon: Wallet },
     { id: 'analysis', label: 'Analysis', icon: BarChart3 },
-    { id: 'profile', label: 'Profile', icon: User }
+    { id: 'profile', label: 'Profile', icon: User },
+    { id: 'migrate', label: 'Migrate Data', icon: Database }
   ];
 
   return (

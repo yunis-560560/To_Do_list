@@ -8,6 +8,7 @@ import Leaderboard from './components/Leaderboard';
 import BudgetModule from './components/BudgetModule';
 import Auth from './components/Auth';
 import AppLoader from './components/AppLoader';
+import MigrationTool from './components/MigrationTool';
 import { useHabits } from './hooks/useHabits';
 import { useUser } from './hooks/useUser';
 
@@ -108,6 +109,8 @@ function App() {
             />
           </div>
         );
+      case 'migrate':
+        return <MigrationTool />;
       default:
         return null;
     }
